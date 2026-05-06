@@ -1,0 +1,3 @@
+DATASET: J, ARUN PANDIAN; GOPAL, GEETHARAMANI (2019), “Data for: Identification of Plant Leaf Diseases Using a 9-layer Deep Convolutional Neural Network”, Mendeley Data, V1, doi: 10.17632/tywbtsjrjv.1
+
+LOCATION: https://data.mendeley.com/datasets/tywbtsjrjv/1
