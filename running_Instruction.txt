@@ -1,0 +1,14 @@
+to run the backend
+
+py -3.11 -m venv backend/.venv
+backend/.venv/Scripts/pip install -r backend/requirements.txt
+backend/.venv/Scripts/uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8001
+backend/.venv/Scripts/uvicorn backend.app.main:app --reload --port 8000
+
+GET http://127.0.0.1:8000/health
+POST http://127.0.0.1:8000/predict?top_k=5 with form-data file=@your_image.jpg
+
+$img = "C:\plant\tomatotest.jpg"
+curl.exe -X POST "http://127.0.0.1:8000/predict?top_k=5" -F "file=@$img"
+
+backend/.venv/Scripts/uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8001
