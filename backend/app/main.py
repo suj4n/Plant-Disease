@@ -1,97 +1,126 @@
-from __future__ import annotations
-
-import io
 import logging
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image, UnidentifiedImageError
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .labels import CLASS_NAMES
-from .ml.predictor import Predictor
-from .settings import settings
+from app.api.routes import api_router
+from app.api.routes import detect as detect_routes
+from app.api.routes import health as health_routes
+from app.core.config import get_settings
+from app.core.exceptions import AppException, InferenceError
+from app.database.base import Base
+from app.database.session import SessionLocal, engine
+from app.services.disease_detection import get_detection_service
+from app.services.seed_data import seed_plants_and_diseases
 
-logger = logging.getLogger("backend")
-
-def _parse_allow_origins(value: str) -> list[str]:
-    v = (value or "").strip()
-    if not v or v == "*":
-        return ["*"]
-    return [o.strip() for o in v.split(",") if o.strip()]
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Keep the predictor as app state to avoid module-level side effects.
-    predictor = Predictor(model_path=settings.model_path)
-    app.state.predictor = predictor
+    settings = get_settings()
+    settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    if settings.preload_model:
-        logger.info("Preloading model from %s", settings.model_path)
-        predictor._load_model()
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        seed_plants_and_diseases(db)
+    finally:
+        db.close()
+
+    service = get_detection_service()
+    try:
+        service.load()
+    except FileNotFoundError as exc:
+        logger.error("Model load skipped: %s", exc)
+    except Exception:
+        logger.exception("Failed to load ML model")
 
     yield
 
 
-app = FastAPI(title="Plant Disease Backend", version="0.2.0", lifespan=lifespan)
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title=settings.app_name,
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+    )
 
-allow_origins = _parse_allow_origins(settings.allow_origins)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    # Browsers reject credentialed requests with wildcard origin. Make it safe by default.
-    allow_credentials=(allow_origins != ["*"]),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(health_routes.router)
+    app.include_router(api_router, prefix=settings.api_v1_prefix)
+    # Legacy Flutter endpoint (no /api/v1 prefix)
+    app.include_router(detect_routes.legacy_router)
+
+    register_exception_handlers(app)
+    return app
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AppException)
+    async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "message": exc.message},
+        )
 
-@app.get("/meta")
-def meta():
-    return {
-        "classes": CLASS_NAMES,
-        "num_classes": len(CLASS_NAMES),
-        "default_top_k": settings.default_top_k,
-    }
+    @app.exception_handler(InferenceError)
+    async def inference_exception_handler(_: Request, exc: InferenceError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "message": exc.message},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        _: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        errors = exc.errors()
+        message = errors[0].get("msg", "Validation error") if errors else "Validation error"
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": message, "errors": errors},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "message": exc.detail},
+        )
+
+    @app.exception_handler(SQLAlchemyError)
+    async def db_exception_handler(_: Request, exc: SQLAlchemyError) -> JSONResponse:
+        logger.exception("Database error: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Database error"},
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled error: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Internal server error"},
+        )
 
 
-@app.post("/predict")
-async def predict(
-    file: UploadFile = File(...),
-    top_k: int | None = Query(default=None, ge=1, description="Number of top predictions to return"),
-):
-    payload = await file.read()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Empty file.")
-    if len(payload) > int(settings.max_upload_bytes):
-        raise HTTPException(status_code=413, detail="File too large.")
-
-    # Some mobile clients upload valid images with a generic content-type like
-    # application/octet-stream. Validate by decoding instead of trusting headers.
-    try:
-        img = Image.open(io.BytesIO(payload))
-        img.verify()
-    except (UnidentifiedImageError, OSError):
-        raise HTTPException(status_code=415, detail="Upload an image file (content-type image/*).")
-
-    k = int(top_k) if top_k is not None else int(settings.default_top_k)
-
-    try:
-        preds = app.state.predictor.predict(payload, top_k=k)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
-
-    return {
-        "top_label": preds[0].label if preds else None,
-        "predictions": [asdict(p) for p in preds],
-        "model_path": app.state.predictor.model_path,
-    }
-
+app = create_app()

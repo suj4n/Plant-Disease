@@ -1,7 +1,10 @@
-.env
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.env
+plantdoc.db
+uploads/*
+!uploads/.gitkeep
 .pytest_cache/
 .mypy_cache/
-*.log
+*.egg-info/

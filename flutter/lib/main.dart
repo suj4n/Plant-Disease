@@ -62,7 +62,7 @@ class PlantDocApp extends StatelessWidget {
             ? AppPageRoute.welcomeDuration
             : AppPageRoute.defaultDuration;
 
-        return AppPageRoute.fade(page, duration: duration);
+        return AppPageRoute.fade(page, settings: settings, duration: duration);
       },
     );
   }

@@ -9,9 +9,11 @@ class AppPageRoute {
 
   static PageRouteBuilder<T> fade<T extends Object?>(
     Widget page, {
+    RouteSettings? settings,
     Duration duration = defaultDuration,
   }) {
     return PageRouteBuilder<T>(
+      settings: settings,
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);

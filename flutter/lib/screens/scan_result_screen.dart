@@ -35,11 +35,17 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
   static int _normalizeConfidence(dynamic rawConf) {
     if (rawConf == null) return 0;
-    if (rawConf is double) {
-      return rawConf <= 1.0 ? (rawConf * 100).round() : rawConf.round();
+    if (rawConf is num) {
+      final v = rawConf.toDouble();
+      return v <= 1.0 ? (v * 100).round() : v.round();
     }
-    if (rawConf is int) return rawConf;
-    if (rawConf is String) return int.tryParse(rawConf) ?? 0;
+    if (rawConf is String) {
+      final asDouble = double.tryParse(rawConf);
+      if (asDouble != null) {
+        return asDouble <= 1.0 ? (asDouble * 100).round() : asDouble.round();
+      }
+      return int.tryParse(rawConf) ?? 0;
+    }
     return 0;
   }
 
@@ -55,7 +61,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
             {};
 
-    final disease = args['disease'] as String? ?? 'Unknown';
+    final disease = args['disease']?.toString() ?? 'Unknown';
     final confidence = _normalizeConfidence(args['confidence']);
     final imagePath = args['imagePath'] as String?;
     final isHealthy = args['isHealthy'] as bool? ??

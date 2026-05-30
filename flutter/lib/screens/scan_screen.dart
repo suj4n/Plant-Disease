@@ -59,8 +59,8 @@ class _ScanScreenState extends State<ScanScreen> {
     } catch (e) {
       if (!mounted) return;
       final message = e.toString().contains('SocketException')
-          ? 'No internet connection'
-          : 'Something went wrong. Try again.';
+          ? 'Cannot reach backend at ${ApiService.baseUrl}. Check Wi‑Fi IP or run: adb reverse tcp:8000 tcp:8000'
+          : e.toString().replaceFirst('HttpException: ', '');
       _showError(message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
