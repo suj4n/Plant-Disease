@@ -22,4 +22,12 @@ class AppNavigator {
   static void goToScan(BuildContext context) {
     Navigator.pushNamed(context, '/scan');
   }
+
+  static void goToPlantTracker(BuildContext context, {required int cropIndex}) {
+    Navigator.pushReplacementNamed(
+      context,
+      '/tracker',
+      arguments: cropIndex,
+    );
+  }
 }

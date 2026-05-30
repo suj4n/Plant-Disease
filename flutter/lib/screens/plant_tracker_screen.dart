@@ -1,137 +1,59 @@
 import 'package:flutter/material.dart';
-import '../core/constants/app_assets.dart';
-import '../core/navigation/app_navigator.dart';
+import '../core/constants/app_stats.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_styles.dart';
-import '../core/widgets/glass_card.dart';
+import '../core/theme/app_spacing.dart';
+import '../core/widgets/app_card.dart';
+import '../core/widgets/app_shell.dart';
 import '../core/widgets/progress_widgets.dart';
-import '../core/widgets/bottom_nav.dart';
-import '../core/widgets/page_background.dart';
+import '../core/widgets/section_header.dart';
 
 /// Plant Tracker Screen Template
 /// Shows plant growth charts, health timeline, and stage progress
 class PlantTrackerScreen extends StatefulWidget {
-  const PlantTrackerScreen({super.key});
+  const PlantTrackerScreen({super.key, this.initialCropIndex = 0});
+
+  final int initialCropIndex;
 
   @override
   State<PlantTrackerScreen> createState() => _PlantTrackerScreenState();
 }
 
 class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
-  int _selectedPlantIndex = 0;
+  late int _selectedPlantIndex;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Tea plantation background image
-          const PageBackground(
-            imagePath: AppAssets.bg,
-            overlayOpacity: 0.7,
-          ),
-          
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                _buildHeader(context),
-                
-                // Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Plant selector
-                        _buildPlantSelector(),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Growth Rate Chart
-                        _buildGrowthRateCard(),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // Health Timeline Card
-                        _buildHealthTimelineCard(),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // Stats Grid
-                        _buildStatsGrid(),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Stage Progress
-                        Text('Growth Stage', style: AppTextStyles.headlineSmall),
-                        const SizedBox(height: 12),
-                        const StageProgressIndicator(currentStage: 2),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // Bottom Nav
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: PlantDocBottomNav(
-              currentIndex: 2,
-              onTap: (index) => AppNavigator.goToTab(context, index, currentIndex: 2),
-              onScanTap: () => AppNavigator.goToScan(context),
-            ),
-          ),
-        ],
-      ),
+  void initState() {
+    super.initState();
+    _selectedPlantIndex = widget.initialCropIndex.clamp(
+      0,
+      AppStats.crops.length - 1,
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+  @override
+  Widget build(BuildContext context) {
+    return AppShell(
+      navIndex: 2,
+      appBar: AppBar(
+        title: Text('${AppStats.supportedCrops[_selectedPlantIndex]} overview'),
+      ),
+      body: AppScrollBody(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Icon(
-                Icons.chevron_left,
-                color: AppColors.foreground,
-              ),
-            ),
-          ),
-          const Spacer(),
-          Text(
-            'Potato Crop Overview',
-            style: AppTextStyles.headlineSmall,
-          ),
-          const Spacer(),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Icon(
-              Icons.more_horiz,
-              color: AppColors.foreground,
-            ),
+          _buildPlantSelector(),
+          const SizedBox(height: AppSpacing.md),
+          _buildGrowthRateCard(),
+          const SizedBox(height: AppSpacing.md),
+          _buildHealthTimelineCard(),
+          const SizedBox(height: AppSpacing.md),
+          _buildStatsGrid(),
+          const SizedBox(height: AppSpacing.md),
+          const SectionHeader(title: 'Growth stage'),
+          const SizedBox(height: AppSpacing.sm),
+          const FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: StageProgressIndicator(currentStage: 2),
           ),
         ],
       ),
@@ -139,12 +61,11 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
   }
 
   Widget _buildPlantSelector() {
-    final plants = ['Potato', 'Rice', 'Tomato', 'Wheat'];
-    
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: List.generate(plants.length, (index) {
+        children: List.generate(AppStats.supportedCrops.length, (index) {
+          final plant = AppStats.supportedCrops[index];
           final isSelected = _selectedPlantIndex == index;
           return GestureDetector(
             onTap: () => setState(() => _selectedPlantIndex = index),
@@ -159,7 +80,7 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
                 ),
               ),
               child: Text(
-                plants[index],
+                plant,
                 style: AppTextStyles.chipText.copyWith(
                   color: isSelected 
                       ? AppColors.primaryForeground 
@@ -174,48 +95,58 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
   }
 
   Widget _buildGrowthRateCard() {
-    return GlassCard(
+    return AppCard(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Growth Rate', style: AppTextStyles.headlineSmall),
-                  Text(
-                    'Day 01 - 83 Plant Age',
-                    style: AppTextStyles.bodySmall,
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Growth Rate', style: AppTextStyles.headlineSmall),
+                    Text(
+                      'Day 01 - 83 Plant Age',
+                      style: AppTextStyles.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                    ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Plant Height (cm)',
+                        style: AppTextStyles.labelSmall,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '83 Days',
+                        style: AppTextStyles.labelMedium.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Plant Height (cm)',
-                    style: AppTextStyles.labelSmall,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '83 Days',
-                    style: AppTextStyles.labelMedium.copyWith(
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
@@ -267,7 +198,7 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
               end: Alignment.topCenter,
               colors: [
                 AppColors.emerald,
-                AppColors.emerald.withOpacity(0.6),
+                AppColors.success.withValues(alpha: 0.6),
               ],
             ),
             borderRadius: const BorderRadius.vertical(
@@ -285,43 +216,43 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
   }
 
   Widget _buildHealthTimelineCard() {
-    return GlassCard(
+    final cropName = AppStats.supportedCrops[_selectedPlantIndex];
+
+    return AppCard(
       padding: const EdgeInsets.all(20),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left side - text
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'Days Since Planting',
-                      style: AppTextStyles.labelMedium,
-                    ),
-                    const Spacer(),
-                    Text(
-                      'To Harvest in',
-                      style: AppTextStyles.labelSmall,
-                    ),
-                  ],
+                Text(
+                  'Days Since Planting',
+                  style: AppTextStyles.labelMedium,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Spacer(),
-                    Text(
-                      '20 Days',
-                      style: AppTextStyles.titleMedium.copyWith(
-                        color: AppColors.primary,
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'To Harvest in',
+                        style: AppTextStyles.labelSmall,
                       ),
-                    ),
-                  ],
+                      Text(
+                        '20 Days',
+                        style: AppTextStyles.titleMedium.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Potato Crop\nHealth Timeline',
+                  '$cropName Crop\nHealth Timeline',
                   style: AppTextStyles.headlineMedium,
                 ),
                 const SizedBox(height: 8),
@@ -332,10 +263,7 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
               ],
             ),
           ),
-          
-          const SizedBox(width: 16),
-          
-          // Right side - circular progress
+          const SizedBox(width: 12),
           const DaysCountdownRing(
             daysRemaining: 63,
             totalDays: 90,
@@ -376,7 +304,7 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
     required String value,
     required Color color,
   }) {
-    return GlassCard(
+    return AppCard(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
@@ -384,21 +312,28 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: AppTextStyles.labelSmall),
-              Text(
-                value,
-                style: AppTextStyles.headlineSmall.copyWith(color: color),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppTextStyles.labelSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  value,
+                  style: AppTextStyles.headlineSmall.copyWith(color: color),
+                ),
+              ],
+            ),
           ),
         ],
       ),

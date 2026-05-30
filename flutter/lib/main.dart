@@ -17,7 +17,7 @@ void main() {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0D1F17),
+      systemNavigationBarColor: Color(0xFF0A1410),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -46,7 +46,11 @@ class PlantDocApp extends StatelessWidget {
           '/home' => const HomeScreen(),
           '/scan' => const ScanScreen(),
           '/result' => const ScanResultScreen(),
-          '/tracker' => const PlantTrackerScreen(),
+          '/tracker' => PlantTrackerScreen(
+            initialCropIndex: settings.arguments is int
+                ? settings.arguments as int
+                : 0,
+          ),
           '/history' => const HistoryScreen(),
           '/profile' => const ProfileScreen(),
           _ => null,

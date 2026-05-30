@@ -1,13 +1,52 @@
 import 'package:flutter/material.dart';
 import '../core/constants/app_assets.dart';
+import '../core/constants/app_stats.dart';
 import '../core/navigation/app_page_route.dart';
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
+import '../core/widgets/app_card.dart';
+import '../core/widgets/highlight_chip.dart';
+import '../core/widgets/page_background.dart';
 import 'home_screen.dart';
 
-/// Welcome / onboarding — tea plantation background, tappable leaf to enter app.
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    _enterApp();
+  }
+
+  void _enterApp() {
+    AppPageRoute.pushReplacementFade(
+      context,
+      const HomeScreen(),
+      duration: AppPageRoute.welcomeDuration,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,46 +54,49 @@ class WelcomeScreen extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            AppAssets.welcomeBg,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            errorBuilder: (_, __, ___) => Container(color: AppColors.background),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.35),
-                    AppColors.background.withValues(alpha: 0.92),
-                    AppColors.background,
-                  ],
-                  stops: const [0.0, 0.35, 0.72, 1.0],
-                ),
-              ),
+          PageBackground(
+            imagePath: AppAssets.welcomeBg,
+            gradientOverlay: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Color(0x66000000),
+                Color(0xE60A1410),
+                AppColors.background,
+              ],
+              stops: [0.0, 0.35, 0.72, 1.0],
             ),
           ),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: SingleChildScrollView(
+              padding: AppSpacing.screen,
               child: Column(
                 children: [
-                  const Spacer(flex: 1),
-                  _buildStatsPills(),
-                  const SizedBox(height: 24),
-                  _buildLocationBadge(),
-                  const Spacer(flex: 2),
-                  _buildWelcomeText(),
-                  const SizedBox(height: 24),
-                  _buildFeatureCarousel(),
-                  const SizedBox(height: 32),
-                  _buildLeafButton(context),
-                  const SizedBox(height: 24),
+                  const _WelcomeTitle(),
+                  const SizedBox(height: AppSpacing.lg),
+                  _LoginCard(
+                    formKey: _formKey,
+                    emailController: _emailController,
+                    passwordController: _passwordController,
+                    obscurePassword: _obscurePassword,
+                    isLoading: _isLoading,
+                    onTogglePassword: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                    onLogin: _handleLogin,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  const Center(
+                    child: HighlightChip(
+                      icon: Icons.bolt_rounded,
+                      value: 'Instant',
+                      label: 'Diagnosis',
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  const _StatsRow(),
+                  const SizedBox(height: AppSpacing.lg),
+                  _GuestEntry(onContinue: _enterApp),
                 ],
               ),
             ),
@@ -63,154 +105,177 @@ class WelcomeScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildStatsPills() {
-    const stats = [
-      {'value': '95%+', 'label': 'Accuracy'},
-      {'value': '38+', 'label': 'Diseases'},
-      {'value': '14', 'label': 'Crops'},
-    ];
+class _WelcomeTitle extends StatelessWidget {
+  const _WelcomeTitle();
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: stats.map((stat) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                stat['value']!,
-                style: AppTextStyles.titleSmall.copyWith(color: AppColors.primary),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                stat['label']!,
-                style: AppTextStyles.labelSmall.copyWith(color: Colors.white70),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildLocationBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.location_on, color: AppColors.primary, size: 18),
-          const SizedBox(width: 6),
-          Text('Nepal', style: AppTextStyles.labelLarge),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWelcomeText() {
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Text(
           'WELCOME TO',
           style: AppTextStyles.labelLarge.copyWith(
+            letterSpacing: 3,
             color: AppColors.muted,
-            letterSpacing: 4,
           ),
         ),
-        const SizedBox(height: 8),
-        Text('PLANTDOC', style: AppTextStyles.displayLarge.copyWith(letterSpacing: 2)),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.xs),
+        Text('PlantDoc', style: AppTextStyles.displayLarge),
+        const SizedBox(height: AppSpacing.xs),
         Text(
-          'Detect plant diseases instantly with\nAI-powered scanning technology',
+          'AI plant disease detection for farmers',
           style: AppTextStyles.bodyMedium,
           textAlign: TextAlign.center,
         ),
       ],
     );
   }
+}
 
-  Widget _buildFeatureCarousel() {
-    const features = [
-      {'icon': Icons.camera_alt, 'label': 'Instant Scan'},
-      {'icon': Icons.psychology, 'label': 'Smart AI'},
-      {'icon': Icons.track_changes, 'label': 'Track Health'},
-    ];
+class _LoginCard extends StatelessWidget {
+  const _LoginCard({
+    required this.formKey,
+    required this.emailController,
+    required this.passwordController,
+    required this.obscurePassword,
+    required this.isLoading,
+    required this.onTogglePassword,
+    required this.onLogin,
+  });
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: features.map((feature) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+  final GlobalKey<FormState> formKey;
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+  final bool obscurePassword;
+  final bool isLoading;
+  final VoidCallback onTogglePassword;
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Form(
+        key: formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Sign in', style: AppTextStyles.headlineSmall),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Save scans and sync across devices',
+              style: AppTextStyles.bodySmall,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.email_outlined, size: 20),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Enter your email';
+                if (!v.contains('@')) return 'Enter a valid email';
+                return null;
+              },
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              controller: passwordController,
+              obscureText: obscurePassword,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => onLogin(),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 20,
+                  ),
+                  onPressed: onTogglePassword,
+                ),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Enter your password';
+                if (v.length < 6) return 'At least 6 characters';
+                return null;
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ElevatedButton(
+              onPressed: isLoading ? null : onLogin,
+              child: isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Log in'),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(feature['icon'] as IconData, color: AppColors.primary, size: 18),
-                const SizedBox(width: 8),
-                Text(feature['label'] as String, style: AppTextStyles.labelMedium),
+                Text("Don't have an account?", style: AppTextStyles.bodySmall),
+                TextButton(onPressed: () {}, child: const Text('Sign up')),
               ],
             ),
-          );
-        }).toList(),
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildLeafButton(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            AppPageRoute.pushReplacementFade(
-              context,
-              const HomeScreen(),
-              duration: AppPageRoute.welcomeDuration,
-            );
-          },
-          customBorder: const CircleBorder(),
-          child: Ink(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.eco,
-              color: AppColors.primaryForeground,
-              size: 40,
-            ),
+class _StatsRow extends StatelessWidget {
+  const _StatsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        children: [
+          HighlightChip(
+            icon: Icons.coronavirus_outlined,
+            value: AppStats.diseaseCount,
+            label: 'Diseases',
           ),
-        ),
+          SizedBox(width: AppSpacing.sm),
+          HighlightChip(
+            icon: Icons.grass,
+            value: AppStats.cropCount,
+            label: 'Crops',
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _GuestEntry extends StatelessWidget {
+  const _GuestEntry({required this.onContinue});
+
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('Or continue without signing in', style: AppTextStyles.bodySmall),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton.icon(
+          onPressed: onContinue,
+          icon: const Icon(Icons.eco_outlined, size: 20),
+          label: const Text('Enter app'),
+        ),
+      ],
     );
   }
 }

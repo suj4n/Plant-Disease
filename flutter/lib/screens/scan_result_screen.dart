@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../core/constants/app_assets.dart';
 import '../core/services/scan_storage.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_styles.dart';
@@ -79,10 +78,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          const PageBackground(
-            imagePath: AppAssets.bg,
-            overlayOpacity: 0.7,
-          ),
+          const PageBackground(),
           Positioned(
             top: 0,
             left: 0,

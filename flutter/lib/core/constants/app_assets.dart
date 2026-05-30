@@ -1,6 +1,11 @@
 /// Image asset paths (under assets/images/).
 abstract final class AppAssets {
-  static const String welcomeBg = 'assets/images/welcome_bg.jpg';
-  static const String homeHero = 'assets/images/home_hero.jpg';
-  static const String bg = 'assets/images/bg.jpg';
+  /// Welcome screen — home_hero image.
+  static const String welcomeBg = 'assets/images/home_hero.jpg';
+
+  /// Home + shared page backgrounds (all pages except scan).
+  static const String pageBg = 'assets/images/welcome_bg.jpg';
+
+  /// Scan screen only.
+  static const String scanBg = 'assets/images/bg.jpg';
 }
