@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../core/providers/auth_provider.dart';
 import '../core/constants/app_stats.dart';
 import '../core/navigation/app_navigator.dart';
 import '../core/services/scan_storage.dart';
@@ -75,6 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
 class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final fullName = authProvider.userProfile?['full_name'] as String? ?? 'PlantDoc User';
+    final firstName = fullName.split(' ').first;
+
     return Row(
       children: [
         const AppIconButton(icon: Icons.person_outline),
@@ -84,7 +90,7 @@ class _HomeHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Good morning', style: AppTextStyles.bodySmall),
-              Text('PlantDoc', style: AppTextStyles.headlineSmall),
+              Text(firstName, style: AppTextStyles.headlineSmall),
             ],
           ),
         ),

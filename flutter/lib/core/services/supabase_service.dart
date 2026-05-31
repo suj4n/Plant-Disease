@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Main Supabase service for PlantDoc Flutter app
@@ -12,62 +13,48 @@ class SupabaseService {
 
   // ==================== AUTH ====================
 
-  /// Register new user with email and password
   static Future<AuthResponse> register({
     required String email,
     required String password,
     required String fullName,
   }) async {
-    try {
-      final response = await _client.auth.signUp(
-        email: email,
-        password: password,
-        data: {'full_name': fullName},
-      );
+    final response = await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {'full_name': fullName},
+    );
 
-      if (response.user != null) {
-        // Create user profile
-        await _client.from('user_profiles').insert({
-          'id': response.user!.id,
-          'email': email,
-          'full_name': fullName,
-        }).catchError((_) => null); // Ignore errors if profile already exists
-      }
-
-      return response;
-    } catch (e) {
-      rethrow;
+    if (response.user != null) {
+      await _client.from('user_profiles').insert({
+        'id': response.user!.id,
+        'email': email,
+        'full_name': fullName,
+      }).catchError((_) => null);
     }
+
+    return response;
   }
 
-  /// Login with email and password
   static Future<AuthResponse> login({
     required String email,
     required String password,
   }) async {
-    try {
-      return await _client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-    } catch (e) {
-      rethrow;
-    }
+    return await _client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
   }
 
-  /// Logout current user
   static Future<void> logout() async {
     await _client.auth.signOut();
   }
 
-  /// Get current user session token
   static String? getAccessToken() {
     return _client.auth.currentSession?.accessToken;
   }
 
   // ==================== USER PROFILE ====================
 
-  /// Get user profile
   static Future<Map<String, dynamic>?> getUserProfile() async {
     if (!isAuthenticated) return null;
 
@@ -77,13 +64,13 @@ class SupabaseService {
           .select()
           .eq('id', currentUser!.id)
           .single();
+
       return response;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  /// Update user profile
   static Future<void> updateProfile({
     required String fullName,
     String? avatarUrl,
@@ -99,7 +86,6 @@ class SupabaseService {
 
   // ==================== SCANS ====================
 
-  /// Save a scan result to Supabase
   static Future<Map<String, dynamic>> saveScan({
     required String diseaseName,
     required double confidence,
@@ -119,11 +105,12 @@ class SupabaseService {
       'created_at': DateTime.now().toIso8601String(),
     };
 
-    final response = await _client.from('scans').insert(data).select();
+    final response =
+        await _client.from('scans').insert(data).select();
+
     return response.first;
   }
 
-  /// Get user's scan history
   static Future<List<Map<String, dynamic>>> getScanHistory({
     int limit = 50,
   }) async {
@@ -136,13 +123,13 @@ class SupabaseService {
           .eq('user_id', currentUser!.id)
           .order('created_at', ascending: false)
           .limit(limit);
+
       return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /// Get a specific scan by ID
   static Future<Map<String, dynamic>?> getScanById(String scanId) async {
     if (!isAuthenticated) return null;
 
@@ -153,13 +140,13 @@ class SupabaseService {
           .eq('id', scanId)
           .eq('user_id', currentUser!.id)
           .single();
+
       return response;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  /// Delete a scan
   static Future<void> deleteScan(String scanId) async {
     if (!isAuthenticated) throw Exception('Not authenticated');
 
@@ -172,36 +159,36 @@ class SupabaseService {
 
   // ==================== DISEASE INFO ====================
 
-  /// Get all diseases from catalog
   static Future<List<Map<String, dynamic>>> getAllDiseases() async {
     try {
       final response = await _client
           .from('disease_info')
           .select()
           .order('name', ascending: true);
+
       return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /// Get disease info by name
-  static Future<Map<String, dynamic>?> getDiseaseInfo(String diseaseName) async {
+  static Future<Map<String, dynamic>?> getDiseaseInfo(
+      String diseaseName) async {
     try {
       final response = await _client
           .from('disease_info')
           .select()
           .eq('name', diseaseName)
           .single();
+
       return response;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
   // ==================== FAVORITES ====================
 
-  /// Add disease to favorites
   static Future<void> addFavorite(int diseaseId) async {
     if (!isAuthenticated) throw Exception('Not authenticated');
 
@@ -210,12 +197,9 @@ class SupabaseService {
         'user_id': currentUser!.id,
         'disease_id': diseaseId,
       });
-    } catch (e) {
-      // Ignore if already favorited
-    }
+    } catch (_) {}
   }
 
-  /// Remove disease from favorites
   static Future<void> removeFavorite(int diseaseId) async {
     if (!isAuthenticated) throw Exception('Not authenticated');
 
@@ -226,7 +210,6 @@ class SupabaseService {
         .eq('disease_id', diseaseId);
   }
 
-  /// Get user's favorite diseases
   static Future<List<Map<String, dynamic>>> getFavorites() async {
     if (!isAuthenticated) return [];
 
@@ -235,13 +218,13 @@ class SupabaseService {
           .from('favorites')
           .select('disease_info(*)')
           .eq('user_id', currentUser!.id);
+
       return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /// Check if disease is favorited
   static Future<bool> isFavorited(int diseaseId) async {
     if (!isAuthenticated) return false;
 
@@ -251,17 +234,18 @@ class SupabaseService {
           .select('id')
           .eq('user_id', currentUser!.id)
           .eq('disease_id', diseaseId);
+
       return response.isNotEmpty;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
-  // ==================== STORAGE ====================
+  // ==================== STORAGE (FIXED) ====================
 
-  /// Upload scan image to storage
+  /// FIXED: Now uses Uint8List instead of List<int>
   static Future<String?> uploadScanImage({
-    required List<int> imageBytes,
+    required Uint8List imageBytes,
     required String fileName,
   }) async {
     if (!isAuthenticated) return null;
@@ -276,25 +260,22 @@ class SupabaseService {
             fileOptions: const FileOptions(upsert: false),
           );
 
-      // Get public URL
-      final publicUrl = _client.storage.from('scan-images').getPublicUrl(path);
-      return publicUrl;
+      return _client.storage.from('scan-images').getPublicUrl(path);
     } catch (e) {
       print('Image upload failed: $e');
       return null;
     }
   }
 
-  // ==================== STREAM SUBSCRIPTIONS ====================
+  // ==================== REALTIME ====================
 
-  /// Subscribe to scan changes for current user
   static RealtimeChannel subscribeToScans({
     required Function(List<Map<String, dynamic>>) onUpdate,
   }) {
     if (!isAuthenticated) throw Exception('Not authenticated');
 
-    final subscription = _client
-        .channel('scans:user_id=eq.${currentUser!.id}')
+    final channel = _client
+        .channel('scans:user')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -304,18 +285,16 @@ class SupabaseService {
             column: 'user_id',
             value: currentUser!.id,
           ),
-          callback: (payload) async {
-            // Fetch updated scans
+          callback: (_) async {
             final scans = await getScanHistory();
             onUpdate(scans);
           },
         )
         .subscribe();
 
-    return subscription;
+    return channel;
   }
 
-  /// Unsubscribe from realtime updates
   static Future<void> unsubscribe(RealtimeChannel channel) async {
     await _client.removeChannel(channel);
   }

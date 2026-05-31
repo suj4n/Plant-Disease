@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../core/providers/auth_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_radius.dart';
 import '../core/theme/app_spacing.dart';
@@ -18,14 +20,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+
     return AppShell(
       navIndex: 3,
       appBar: AppBar(title: const Text('Profile')),
       body: AppScrollBody(
         children: [
-          const _ProfileHeader(),
+          _ProfileHeader(authProvider: authProvider),
           const SizedBox(height: AppSpacing.lg),
           _SettingsCard(
+            authProvider: authProvider,
             notificationsOn: _notificationsOn,
             onNotificationsChanged: (v) => setState(() => _notificationsOn = v),
           ),
@@ -36,10 +41,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  const _ProfileHeader({required this.authProvider});
+
+  final AuthProvider authProvider;
 
   @override
   Widget build(BuildContext context) {
+    final email = authProvider.user?.email ?? 'guest@plantdoc.app';
+    final fullName = authProvider.userProfile?['full_name'] as String? ?? 'PlantDoc User';
+
     return Column(
       children: [
         Container(
@@ -53,9 +63,9 @@ class _ProfileHeader extends StatelessWidget {
           child: const Icon(Icons.person_outline, color: AppColors.primary, size: 48),
         ),
         const SizedBox(height: AppSpacing.md),
-        Text('PlantDoc user', style: AppTextStyles.headlineMedium),
+        Text(fullName, style: AppTextStyles.headlineMedium),
         const SizedBox(height: AppSpacing.xs),
-        Text('user@plantdoc.app', style: AppTextStyles.bodyMedium),
+        Text(email, style: AppTextStyles.bodyMedium),
       ],
     );
   }
@@ -63,12 +73,41 @@ class _ProfileHeader extends StatelessWidget {
 
 class _SettingsCard extends StatelessWidget {
   const _SettingsCard({
+    required this.authProvider,
     required this.notificationsOn,
     required this.onNotificationsChanged,
   });
 
+  final AuthProvider authProvider;
   final bool notificationsOn;
   final ValueChanged<bool> onNotificationsChanged;
+
+  void _handleLogout(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out'),
+        content: const Text('Are you sure you want to log out of PlantDoc?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log out', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await authProvider.logout();
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +141,12 @@ class _SettingsCard extends StatelessWidget {
             label: 'About',
             subtitle: 'Version 1.0.0',
             onTap: () {},
+          ),
+          const Divider(height: 1),
+          _SettingsTile(
+            icon: Icons.logout_rounded,
+            label: 'Log out',
+            onTap: () => _handleLogout(context),
           ),
         ],
       ),
@@ -150,3 +195,4 @@ class _SettingsTile extends StatelessWidget {
     );
   }
 }
+

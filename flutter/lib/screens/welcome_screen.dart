@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../core/constants/app_assets.dart';
 import '../core/constants/app_stats.dart';
 import '../core/navigation/app_page_route.dart';
+import '../core/providers/auth_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
@@ -34,10 +36,27 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final success = await authProvider.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
+
     if (!mounted) return;
     setState(() => _isLoading = false);
-    _enterApp();
+
+    if (success) {
+      _enterApp();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Login failed'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _enterApp() {
@@ -223,7 +242,10 @@ class _LoginCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text("Don't have an account?", style: AppTextStyles.bodySmall),
-                TextButton(onPressed: () {}, child: const Text('Sign up')),
+                TextButton(
+                  onPressed: () => Navigator.pushNamed(context, '/register'),
+                  child: const Text('Sign up'),
+                ),
               ],
             ),
           ],
