@@ -116,14 +116,18 @@ flutter run
 
 ## 3. Connect the phone to the backend
 
-The app sends scans to `POST /predict`. The URL is set in:
+The app sends scans to `POST /predict`. The URL is set in **`flutter/.env`**:
 
-`flutter/lib/core/services/api_service.dart`
+```env
+API_BASE_URL=http://127.0.0.1:8000
+```
 
-Default (USB):
+For **release APK / production**, use your cloud HTTPS URL (see `docs/CLOUD_SETUP.md`).
 
-```dart
-static const baseUrl = usbBaseUrl;  // http://127.0.0.1:8000
+Default for USB dev:
+
+```env
+API_BASE_URL=http://127.0.0.1:8000
 ```
 
 ### Option A — USB debugging (recommended)
@@ -148,27 +152,48 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 1. On PC, run `ipconfig` and note your **IPv4** address (e.g. `192.168.1.42`).
 2. Start the backend with `--host 0.0.0.0` (see above).
-3. In `api_service.dart`, set your IP and use LAN mode:
+3. In `flutter/.env`, set your PC IP:
 
-```dart
-static const lanBaseUrl = 'http://192.168.1.75:8000';  // your PC IP
-static const baseUrl = lanBaseUrl;
+```env
+API_BASE_URL=http://192.168.1.75:8000
 ```
 
-1. Rebuild the app: `flutter run`.
+4. Rebuild the app: `flutter run`.
 
 Phone and PC must be on the same network. Allow port **8000** through Windows Firewall if requests fail.
 
 ### Android permissions
 
-Already configured in `flutter/android/app/src/main/AndroidManifest.xml`:
+Configured in `flutter/android/app/src/main/AndroidManifest.xml`:
 
-- `INTERNET`
-- `android:usesCleartextTraffic="true"` (for HTTP during development)
+- `INTERNET`, `CAMERA`, `READ_MEDIA_IMAGES`
+- `android:usesCleartextTraffic="true"` (for HTTP during development only)
 
 ---
 
-## 4. Test a scan in the app
+## 4. Build a release APK (cloud ML)
+
+1. Deploy the backend with your model (see **`docs/CLOUD_SETUP.md`**).
+2. Set in `flutter/.env`:
+
+```env
+API_BASE_URL=https://your-deployed-api.example.com
+```
+
+3. Build:
+
+```powershell
+cd flutter
+flutter build apk --release
+```
+
+4. Install `build/app/outputs/flutter-apk/app-release.apk` on the phone.
+
+Auth uses Supabase over the internet; scans use `API_BASE_URL` — **not** `127.0.0.1` on a standalone APK.
+
+---
+
+## 5. Test a scan in the app
 
 1. Backend is running.
 2. `adb reverse tcp:8000 tcp:8000` (if using USB).
@@ -199,7 +224,8 @@ Use a **clear photo of a single leaf**; busy or non-leaf images may return “No
 | 1. Backend    | `cd backend` → activate `.venv` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
 | 2. USB bridge | `adb reverse tcp:8000 tcp:8000`                                                              |
 | 3. Flutter    | `cd flutter` → `flutter pub get` → `flutter run`                                             |
-| 4. API URL    | `usbBaseUrl` (USB) or `lanBaseUrl` with your PC IP (Wi‑Fi)                                   |
+| 4. API URL    | `API_BASE_URL` in `flutter/.env` (USB / Wi‑Fi / cloud HTTPS)                                 |
+| 5. APK        | `flutter build apk --release` after setting cloud `API_BASE_URL`                               |
 
 
 **Order:** start **backend** → run **adb reverse** (USB) → run **flutter run**.

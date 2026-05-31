@@ -1,0 +1,46 @@
+# Local production-like run: docker compose up --build
+# Cloud (Railway / Render / Fly): point the service at this repo root Dockerfile;
+# set env vars in the dashboard (SECRET_KEY, optional Supabase keys). Platforms inject PORT.
+
+name: plant-disease
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: plant-disease-api:latest
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      PORT: "8000"
+      DEBUG: "${DEBUG:-false}"
+      SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
+      MODEL_PATH: /app/model/plant_best_model.keras
+      CLASS_NAMES_PATH: /app/Resources/class_names.json
+      DATABASE_URL: sqlite:////app/backend/data/plantdoc.db
+      UPLOAD_DIR: /app/backend/uploads
+      CORS_ORIGINS: '["*"]'
+    env_file:
+      - path: backend/.env
+        required: false
+    volumes:
+      - api-data:/app/backend/data
+      - api-uploads:/app/backend/uploads
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+volumes:
+  api-data:
+  api-uploads:

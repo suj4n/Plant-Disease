@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/navigation/app_page_route.dart';
 import 'core/providers/auth_provider.dart';
+import 'core/services/api_service.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/home_screen.dart';
@@ -32,6 +33,10 @@ void main() async {
   await Supabase.initialize(
     url: supabaseUrl.trim(),
     anonKey: supabaseAnonKey.trim(),
+  );
+
+  ApiService.configure(
+    apiBaseUrlFromEnv: dotenv.env['API_BASE_URL'],
   );
 
   SystemChrome.setSystemUIOverlayStyle(

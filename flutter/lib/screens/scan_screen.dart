@@ -58,10 +58,7 @@ class _ScanScreenState extends State<ScanScreen> {
       await Navigator.pushNamed(context, '/result', arguments: data);
     } catch (e) {
       if (!mounted) return;
-      final message = e.toString().contains('SocketException')
-          ? 'Cannot reach backend at ${ApiService.baseUrl}. Check Wi‑Fi IP or run: adb reverse tcp:8000 tcp:8000'
-          : e.toString().replaceFirst('HttpException: ', '');
-      _showError(message);
+      _showError(ApiService.connectionErrorMessage(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
