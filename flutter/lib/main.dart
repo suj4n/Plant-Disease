@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/navigation/app_page_route.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/welcome_screen.dart';
@@ -10,8 +11,14 @@ import 'screens/plant_tracker_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: 'https://your-project.supabase.co', // Replace with your Supabase URL
+    anonKey: 'your-anon-key-here', // Replace with your anon key
+  );
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

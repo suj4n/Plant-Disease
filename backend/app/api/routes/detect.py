@@ -9,6 +9,11 @@ from app.core.exceptions import AppException
 from app.models.detection import Detection
 from app.schemas.detection import DetectResponse, LegacyPredictResponse
 from app.services.disease_detection import get_detection_service
+from app.services.supabase_service import (
+    is_supabase_enabled,
+    save_scan,
+    upload_scan_image,
+)
 from app.utils.image import load_image_rgb, validate_image_bytes
 
 router = APIRouter(tags=["detection"])
@@ -53,6 +58,7 @@ async def detect_disease(
     image_path.write_bytes(data)
 
     if current_user:
+        # Save to SQLite (legacy)
         record = Detection(
             user_id=current_user.id,
             image_path=str(image_path.relative_to(settings.upload_dir.parent)),
@@ -63,6 +69,26 @@ async def detect_disease(
         )
         db.add(record)
         db.commit()
+
+        # Save to Supabase (if enabled)
+        if is_supabase_enabled():
+            try:
+                image_url = await upload_scan_image(
+                    str(current_user.id),
+                    data,
+                    file.filename or f"{stamp}{suffix}",
+                )
+                recommendations_text = ", ".join(prediction.treatment or [])
+                await save_scan(
+                    user_id=str(current_user.id),
+                    disease_name=prediction.disease,
+                    confidence=prediction.confidence,
+                    is_healthy=prediction.is_healthy,
+                    recommendations=recommendations_text,
+                    image_url=image_url,
+                )
+            except Exception as e:
+                print(f"Failed to save to Supabase: {e}")
 
     return DetectResponse(prediction=prediction)
 
@@ -92,6 +118,7 @@ async def predict_legacy(
     image_path.write_bytes(data)
 
     if current_user:
+        # Save to SQLite (legacy)
         record = Detection(
             user_id=current_user.id,
             image_path=str(image_path.relative_to(settings.upload_dir.parent)),
@@ -102,5 +129,27 @@ async def predict_legacy(
         )
         db.add(record)
         db.commit()
+
+        # Save to Supabase (if enabled)
+        if is_supabase_enabled():
+            try:
+                image_url = await upload_scan_image(
+                    str(current_user.id),
+                    data,
+                    file.filename or f"{stamp}{suffix}",
+                )
+                recommendations_text = legacy.get("recommendations", "")
+                if isinstance(recommendations_text, list):
+                    recommendations_text = ", ".join(recommendations_text)
+                await save_scan(
+                    user_id=str(current_user.id),
+                    disease_name=prediction.disease,
+                    confidence=prediction.confidence,
+                    is_healthy=prediction.is_healthy,
+                    recommendations=recommendations_text,
+                    image_url=image_url,
+                )
+            except Exception as e:
+                print(f"Failed to save to Supabase: {e}")
 
     return LegacyPredictResponse(**legacy)

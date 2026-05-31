@@ -10,6 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   
+  # Supabase
+  supabase_flutter: ^2.7.0
+  
   # UI & Design
   google_fonts: ^8.1.0
   flutter_svg: ^2.3.0
@@ -38,7 +41,7 @@ dependencies:
   intl: ^0.20.2
   http: ^1.2.2
   shared_preferences: ^2.5.3
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

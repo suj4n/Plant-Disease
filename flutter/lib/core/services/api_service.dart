@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'auth_service.dart';
 
 /// Centralized backend API service for plant disease analysis.
 ///
 /// **USB debugging:** run `adb reverse tcp:8000 tcp:8000` and use [usbBaseUrl].
 /// **Wi‑Fi:** set [lanBaseUrl] to your PC's IPv4 from `ipconfig` / `ifconfig`.
+/// **Production:** set [cloudBaseUrl] to your cloud server URL.
 class ApiService {
   ApiService._();
 
@@ -15,6 +17,9 @@ class ApiService {
 
   /// Use with `adb reverse tcp:8000 tcp:8000` during USB debugging.
   static const usbBaseUrl = 'http://127.0.0.1:8000';
+
+  /// Production cloud backend URL
+  static const cloudBaseUrl = 'https://your-domain.com';
 
   /// Set at build time via `--dart-define=API_BASE_URL=...` (see `scripts/dev-usb.ps1`).
   /// Falls back to [usbBaseUrl] when not defined.
@@ -31,8 +36,12 @@ class ApiService {
   static void setAccessToken(String? token) => _accessToken = token;
 
   static Map<String, String> get _authHeaders {
-    if (_accessToken == null) return {};
-    return {'Authorization': 'Bearer $_accessToken'};
+    final token = _accessToken ?? AuthService.getAccessToken();
+    if (token == null) return {};
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
   }
 
   /// Legacy `/predict` endpoint (matches existing [ScanResultScreen] fields).
@@ -41,9 +50,10 @@ class ApiService {
       'POST',
       Uri.parse('$baseUrl$_analyzePath?top_k=5'),
     );
-    if (_accessToken != null) {
-      request.headers.addAll(_authHeaders);
-    }
+    
+    // Add auth headers if user is authenticated
+    request.headers.addAll(_authHeaders);
+    
     request.files.add(
       await http.MultipartFile.fromPath('file', image.path),
     );
@@ -102,7 +112,10 @@ class ApiService {
       'POST',
       Uri.parse('$baseUrl$_detectPath'),
     );
+    
+    // Add auth headers (required for /api/v1/detect)
     request.headers.addAll(_authHeaders);
+    
     request.files.add(
       await http.MultipartFile.fromPath('file', image.path),
     );
