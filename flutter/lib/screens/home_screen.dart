@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/providers/auth_provider.dart';
-import '../core/constants/app_stats.dart';
 import '../core/navigation/app_navigator.dart';
 import '../core/services/scan_storage.dart';
 import '../core/theme/app_colors.dart';
@@ -10,10 +9,14 @@ import '../core/theme/app_text_styles.dart';
 import '../core/widgets/app_card.dart';
 import '../core/widgets/app_icon_button.dart';
 import '../core/widgets/app_shell.dart';
-import '../core/widgets/crop_grid_tile.dart';
 import '../core/widgets/page_background.dart';
 import '../core/widgets/scan_activity_tile.dart';
 import '../core/widgets/section_header.dart';
+import '../features/plant_tracker/models/plant_batch.dart';
+import '../features/plant_tracker/providers/plant_batch_provider.dart';
+import '../features/plant_tracker/widgets/create_batch_sheet.dart';
+import '../features/plant_tracker/widgets/home_batch_tile.dart';
+import 'plant_batch_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,12 +32,39 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PlantBatchProvider>().loadBatches();
+    });
   }
 
   Future<void> _loadData() async {
     final all = await ScanStorage.getAll();
     if (!mounted) return;
     setState(() => _recentScans = all.take(3).toList());
+  }
+
+  void _openBatchDetail(String batchId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PlantBatchDetailScreen(batchId: batchId),
+      ),
+    ).then((_) {
+      if (mounted) context.read<PlantBatchProvider>().loadBatches();
+    });
+  }
+
+  Future<void> _createBatch() async {
+    final result = await CreateBatchSheet.show(context);
+    if (result == null || !mounted) return;
+
+    final batch = await context.read<PlantBatchProvider>().createBatch(
+          name: result['name'] as String,
+          plantType: result['plantType'] as String,
+          plantedDate: result['plantedDate'] as DateTime,
+        );
+    if (!mounted || batch == null) return;
+    _openBatchDetail(batch.id);
   }
 
   String _formatTimeAgo(String? timestamp) {
@@ -61,7 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
             const SectionGap(size: AppSpacing.lg),
             const _WelcomeBlock(),
             const SectionGap(),
-            const _SupportedCropsSection(),
+            _HomeBatchesSection(
+              onBatchTap: _openBatchDetail,
+              onAddBatch: _createBatch,
+              onViewAll: () => AppNavigator.goToTab(context, 2, currentIndex: 0),
+            ),
             const SectionGap(),
             _RecentActivitySection(
               scans: _recentScans,
@@ -121,35 +155,110 @@ class _WelcomeBlock extends StatelessWidget {
   }
 }
 
-class _SupportedCropsSection extends StatelessWidget {
-  const _SupportedCropsSection();
+class _HomeBatchesSection extends StatelessWidget {
+  const _HomeBatchesSection({
+    required this.onBatchTap,
+    required this.onAddBatch,
+    required this.onViewAll,
+  });
+
+  final void Function(String batchId) onBatchTap;
+  final VoidCallback onAddBatch;
+  final VoidCallback onViewAll;
+
+  static const _slotCount = 4;
+
+  List<PlantBatch> _batchesForGrid(List<PlantBatch> all) {
+    final sorted = List<PlantBatch>.from(all)
+      ..sort((a, b) => a.nextReminderDate.compareTo(b.nextReminderDate));
+    return sorted.take(_slotCount).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionHeader(title: 'Supported crops'),
-        const SizedBox(height: AppSpacing.sm),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          mainAxisSpacing: AppSpacing.sm,
-          crossAxisSpacing: AppSpacing.sm,
-          childAspectRatio: 1,
+    return Consumer<PlantBatchProvider>(
+      builder: (context, provider, _) {
+        final batches = _batchesForGrid(provider.batches);
+        final showAddSlots = batches.length < _slotCount;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var i = 0; i < AppStats.crops.length; i++)
-              CropGridTile(
-                crop: AppStats.crops[i],
-                onTap: () => AppNavigator.goToPlantTracker(
-                  context,
-                  cropIndex: i,
+            SectionHeader(
+              title: 'Your plant batches',
+              actionLabel: provider.isEmpty ? null : 'View all',
+              onAction: provider.isEmpty ? null : onViewAll,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            if (provider.loading)
+              const SizedBox(
+                height: 160,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (provider.isEmpty)
+              AppCard(
+                onTap: onAddBatch,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.eco_outlined,
+                        color: AppColors.primary,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No batches yet',
+                            style: AppTextStyles.titleLarge,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Track plantings and get scan reminders every 2 weeks.',
+                            style: AppTextStyles.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.primary,
+                    ),
+                  ],
                 ),
+              )
+            else
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                mainAxisSpacing: AppSpacing.sm,
+                crossAxisSpacing: AppSpacing.sm,
+                childAspectRatio: 1,
+                children: [
+                  for (final batch in batches)
+                    HomeBatchTile(
+                      batch: batch,
+                      onTap: () => onBatchTap(batch.id),
+                    ),
+                  if (showAddSlots)
+                    for (var i = 0; i < _slotCount - batches.length; i++)
+                      HomeAddBatchTile(onTap: onAddBatch),
+                ],
               ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }

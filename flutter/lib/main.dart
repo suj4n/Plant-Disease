@@ -4,9 +4,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/navigation/app_page_route.dart';
+import 'core/constants/app_stats.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/services/api_service.dart';
 import 'core/theme/app_theme.dart';
+import 'features/plant_tracker/providers/plant_batch_provider.dart';
+import 'features/plant_tracker/services/plant_reminder_service.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/scan_screen.dart';
@@ -39,6 +42,9 @@ void main() async {
     apiBaseUrlFromEnv: dotenv.env['API_BASE_URL'],
   );
 
+  await PlantReminderService.instance.initialize();
+  await PlantReminderService.instance.rescheduleAll();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -57,10 +63,22 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => PlantBatchProvider()),
       ],
       child: const PlantDocApp(),
     ),
   );
+}
+
+String? _trackerSuggestedPlantType(Object? arguments) {
+  if (arguments is String) return arguments;
+  if (arguments is int) {
+    final crops = AppStats.supportedCrops;
+    if (arguments >= 0 && arguments < crops.length) {
+      return crops[arguments];
+    }
+  }
+  return null;
 }
 
 class PlantDocApp extends StatelessWidget {
@@ -83,9 +101,7 @@ class PlantDocApp extends StatelessWidget {
           '/scan' => const ScanScreen(),
           '/result' => const ScanResultScreen(),
           '/tracker' => PlantTrackerScreen(
-              initialCropIndex: settings.arguments is int
-                  ? settings.arguments as int
-                  : 0,
+              suggestedPlantType: _trackerSuggestedPlantType(settings.arguments),
             ),
           '/history' => const HistoryScreen(),
           '/profile' => const ProfileScreen(),

@@ -49,6 +49,36 @@ class ScanStorage {
     await prefs.remove(_key);
   }
 
+  static const List<String> weekdayLabels = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
+
+  /// Scan counts for each day of the current week (Monday–Sunday).
+  static List<int> scanCountsForCurrentWeek(List<Map<String, dynamic>> scans) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: now.weekday - 1));
+
+    final counts = List<int>.filled(7, 0);
+    for (final scan in scans) {
+      final raw = scan['timestamp'];
+      if (raw == null) continue;
+      try {
+        final dt = DateTime.parse(raw.toString());
+        final day = DateTime(dt.year, dt.month, dt.day);
+        final index = day.difference(monday).inDays;
+        if (index >= 0 && index < 7) counts[index]++;
+      } catch (_) {}
+    }
+    return counts;
+  }
+
   static int _normalizeConf(dynamic raw) {
     if (raw == null) return 0;
     if (raw is double) return raw <= 1.0 ? (raw * 100).round() : raw.round();

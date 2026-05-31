@@ -89,7 +89,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          _WeeklyChartCard(),
+          _WeeklyChartCard(scans: _allScans),
           const SizedBox(height: AppSpacing.md),
           _QuickStatsRow(scans: _allScans),
           const SizedBox(height: AppSpacing.md),
@@ -116,30 +116,57 @@ class _HistoryScreenState extends State<HistoryScreen> {
 }
 
 class _WeeklyChartCard extends StatelessWidget {
+  const _WeeklyChartCard({required this.scans});
+
+  final List<Map<String, dynamic>> scans;
+
   @override
   Widget build(BuildContext context) {
+    final counts = ScanStorage.scanCountsForCurrentWeek(scans);
+    final totalThisWeek = counts.fold<int>(0, (sum, c) => sum + c);
+    final maxCount = counts.reduce((a, b) => a > b ? a : b);
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionHeader(title: 'Weekly scans'),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Weekly scans', style: AppTextStyles.headlineSmall),
+              ),
+              if (totalThisWeek > 0)
+                Text(
+                  '$totalThisWeek this week',
+                  style: AppTextStyles.labelSmall.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: AppSpacing.md),
           SizedBox(
-            height: 96,
+            height: 108,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: const [
-                _DayBar(label: 'Mon', factor: 0.4),
-                _DayBar(label: 'Tue', factor: 0.7),
-                _DayBar(label: 'Wed', factor: 0.5),
-                _DayBar(label: 'Thu', factor: 0.9),
-                _DayBar(label: 'Fri', factor: 0.6),
-                _DayBar(label: 'Sat', factor: 0.3),
-                _DayBar(label: 'Sun', factor: 0.8),
+              children: [
+                for (var i = 0; i < 7; i++)
+                  _DayBar(
+                    label: ScanStorage.weekdayLabels[i],
+                    count: counts[i],
+                    factor: maxCount == 0 ? 0 : counts[i] / maxCount,
+                  ),
               ],
             ),
           ),
+          if (totalThisWeek == 0) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'No scans recorded this week',
+              style: AppTextStyles.bodySmall,
+            ),
+          ],
         ],
       ),
     );
@@ -147,21 +174,40 @@ class _WeeklyChartCard extends StatelessWidget {
 }
 
 class _DayBar extends StatelessWidget {
-  const _DayBar({required this.label, required this.factor});
+  const _DayBar({
+    required this.label,
+    required this.count,
+    required this.factor,
+  });
 
   final String label;
+  final int count;
   final double factor;
+
+  static const double _maxBarHeight = 64;
 
   @override
   Widget build(BuildContext context) {
+    final barHeight = factor > 0 ? _maxBarHeight * factor : 4.0;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        if (count > 0)
+          Text(
+            '$count',
+            style: AppTextStyles.labelSmall.copyWith(color: AppColors.primary),
+          )
+        else
+          const SizedBox(height: 14),
+        const SizedBox(height: 4),
         Container(
           width: 24,
-          height: 64 * factor,
+          height: barHeight,
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.85),
+            color: count > 0
+                ? AppColors.primary.withValues(alpha: 0.85)
+                : AppColors.glassFill,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
           ),
         ),

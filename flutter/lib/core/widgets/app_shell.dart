@@ -22,6 +22,11 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasUnderlap = background != null && appBar != null;
+    final topInset = hasUnderlap
+        ? MediaQuery.paddingOf(context).top + appBar!.preferredSize.height
+        : 0.0;
+
     return Scaffold(
       appBar: appBar,
       extendBodyBehindAppBar: background != null,
@@ -29,7 +34,10 @@ class AppShell extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (background != null) background!,
-          body,
+          Padding(
+            padding: EdgeInsets.only(top: topInset),
+            child: body,
+          ),
           Positioned(
             left: 0,
             right: 0,
