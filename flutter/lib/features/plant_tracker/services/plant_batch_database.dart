@@ -1,9 +1,10 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/services/supabase_service.dart';
 import '../models/plant_batch.dart';
 
-/// SQLite persistence for plant batches and scan timeline events.
+/// Plant batches: SQLite for guests, Supabase for signed-in users.
 class PlantBatchDatabase {
   PlantBatchDatabase._();
   static final PlantBatchDatabase instance = PlantBatchDatabase._();
@@ -12,6 +13,8 @@ class PlantBatchDatabase {
   static const _dbVersion = 1;
 
   Database? _db;
+
+  bool get _useCloud => SupabaseService.isAuthenticated;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -53,6 +56,10 @@ class PlantBatchDatabase {
   }
 
   Future<List<PlantBatch>> getAllBatches() async {
+    if (_useCloud) {
+      final rows = await SupabaseService.getPlantBatches();
+      return rows.map(PlantBatch.fromMap).toList();
+    }
     final db = await database;
     final rows = await db.query(
       'plant_batches',
@@ -62,6 +69,11 @@ class PlantBatchDatabase {
   }
 
   Future<PlantBatch?> getBatch(String id) async {
+    if (_useCloud) {
+      final row = await SupabaseService.getPlantBatch(id);
+      if (row == null) return null;
+      return PlantBatch.fromMap(row);
+    }
     final db = await database;
     final rows = await db.query(
       'plant_batches',
@@ -74,11 +86,19 @@ class PlantBatchDatabase {
   }
 
   Future<void> insertBatch(PlantBatch batch) async {
+    if (_useCloud) {
+      await SupabaseService.insertPlantBatch(batch.toMap());
+      return;
+    }
     final db = await database;
     await db.insert('plant_batches', batch.toMap());
   }
 
   Future<void> updateBatch(PlantBatch batch) async {
+    if (_useCloud) {
+      await SupabaseService.updatePlantBatch(batch.toMap());
+      return;
+    }
     final db = await database;
     await db.update(
       'plant_batches',
@@ -89,6 +109,10 @@ class PlantBatchDatabase {
   }
 
   Future<void> deleteBatch(String id) async {
+    if (_useCloud) {
+      await SupabaseService.deletePlantBatch(id);
+      return;
+    }
     final db = await database;
     await db.delete('batch_scan_events', where: 'batch_id = ?', whereArgs: [id]);
     await db.delete('plant_batches', where: 'id = ?', whereArgs: [id]);
@@ -99,6 +123,14 @@ class PlantBatchDatabase {
     required DateTime occurredAt,
     String? note,
   }) async {
+    if (_useCloud) {
+      await SupabaseService.addBatchScanEvent(
+        batchId: batchId,
+        occurredAt: occurredAt,
+        note: note,
+      );
+      return;
+    }
     final db = await database;
     await db.insert('batch_scan_events', {
       'batch_id': batchId,
@@ -108,13 +140,18 @@ class PlantBatchDatabase {
   }
 
   Future<List<BatchTimelineEvent>> getTimelineEvents(PlantBatch batch) async {
-    final db = await database;
-    final scanRows = await db.query(
-      'batch_scan_events',
-      where: 'batch_id = ?',
-      whereArgs: [batch.id],
-      orderBy: 'occurred_at DESC',
-    );
+    final List<Map<String, dynamic>> scanRows;
+    if (_useCloud) {
+      scanRows = await SupabaseService.getBatchScanEvents(batch.id);
+    } else {
+      final db = await database;
+      scanRows = await db.query(
+        'batch_scan_events',
+        where: 'batch_id = ?',
+        whereArgs: [batch.id],
+        orderBy: 'occurred_at DESC',
+      );
+    }
 
     final events = <BatchTimelineEvent>[
       BatchTimelineEvent(
@@ -137,6 +174,41 @@ class PlantBatchDatabase {
     events.addAll(reminders);
     events.sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
     return events;
+  }
+
+  /// Copies guest SQLite batches to Supabase after sign-in.
+  static Future<void> migrateGuestBatchesToCloud() async {
+    if (!SupabaseService.isAuthenticated) return;
+
+    final db = await instance.database;
+    final rows = await db.query('plant_batches', orderBy: 'planted_date DESC');
+    if (rows.isEmpty) return;
+
+    for (final row in rows) {
+      final batch = PlantBatch.fromMap(row);
+      try {
+        final existing = await SupabaseService.getPlantBatch(batch.id);
+        if (existing == null) {
+          await SupabaseService.insertPlantBatch(batch.toMap());
+        }
+
+        final eventRows = await db.query(
+          'batch_scan_events',
+          where: 'batch_id = ?',
+          whereArgs: [batch.id],
+        );
+        for (final event in eventRows) {
+          await SupabaseService.addBatchScanEvent(
+            batchId: batch.id,
+            occurredAt: DateTime.parse(event['occurred_at'] as String),
+            note: event['note'] as String?,
+          );
+        }
+      } catch (_) {}
+    }
+
+    await db.delete('batch_scan_events');
+    await db.delete('plant_batches');
   }
 
   List<BatchTimelineEvent> _reminderTimelineEvents(PlantBatch batch) {

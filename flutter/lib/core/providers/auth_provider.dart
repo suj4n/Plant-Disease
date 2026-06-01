@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
+import '../services/user_data_sync.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _user;
@@ -53,6 +54,7 @@ class AuthProvider extends ChangeNotifier {
       await AuthService.login(email: email, password: password);
       _user = AuthService.getCurrentUser();
       await _loadProfile();
+      await UserDataSync.migrateGuestDataToCloud();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -81,6 +83,7 @@ class AuthProvider extends ChangeNotifier {
       );
       _user = AuthService.getCurrentUser();
       await _loadProfile();
+      await UserDataSync.migrateGuestDataToCloud();
       _isLoading = false;
       notifyListeners();
       return true;

@@ -143,11 +143,12 @@ class _SettingsCard extends StatelessWidget {
             onTap: () {},
           ),
           const Divider(height: 1),
-          _SettingsTile(
-            icon: Icons.logout_rounded,
-            label: 'Log out',
-            onTap: () => _handleLogout(context),
-          ),
+          if (authProvider.isAuthenticated)
+            _SettingsTile(
+              icon: Icons.logout_rounded,
+              label: 'Log out',
+              onTap: () => _handleLogout(context),
+            ),
         ],
       ),
     );

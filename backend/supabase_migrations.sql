@@ -39,7 +39,26 @@ CREATE TABLE IF NOT EXISTS disease_info (
   created_at TIMESTAMP DEFAULT now()
 );
 
--- 4. Favorites (user-disease associations)
+-- 4. Plant batches (tracker)
+CREATE TABLE IF NOT EXISTS plant_batches (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  plant_type TEXT NOT NULL,
+  planted_date TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS batch_scan_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id UUID NOT NULL REFERENCES plant_batches(id) ON DELETE CASCADE,
+  occurred_at TIMESTAMP NOT NULL,
+  note TEXT,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+-- 5. Favorites (user-disease associations)
 CREATE TABLE IF NOT EXISTS favorites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
@@ -56,6 +75,8 @@ CREATE TABLE IF NOT EXISTS favorites (
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE disease_info ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plant_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE batch_scan_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
 
 -- User Profiles Policies
@@ -85,6 +106,46 @@ CREATE POLICY "Users can delete own scans" ON scans
 CREATE POLICY "Anyone can read disease info" ON disease_info
   FOR SELECT USING (true);
 
+-- Plant batch policies
+CREATE POLICY "Users can read own plant batches" ON plant_batches
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own plant batches" ON plant_batches
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own plant batches" ON plant_batches
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own plant batches" ON plant_batches
+  FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can read own batch scan events" ON batch_scan_events
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM plant_batches
+      WHERE plant_batches.id = batch_scan_events.batch_id
+        AND plant_batches.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert own batch scan events" ON batch_scan_events
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM plant_batches
+      WHERE plant_batches.id = batch_scan_events.batch_id
+        AND plant_batches.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete own batch scan events" ON batch_scan_events
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM plant_batches
+      WHERE plant_batches.id = batch_scan_events.batch_id
+        AND plant_batches.user_id = auth.uid()
+    )
+  );
+
 -- Favorites Policies
 CREATE POLICY "Users can read own favorites" ON favorites
   FOR SELECT USING (auth.uid() = user_id);
@@ -101,6 +162,8 @@ CREATE POLICY "Users can delete own favorites" ON favorites
 
 CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id);
 CREATE INDEX IF NOT EXISTS idx_scans_created_at ON scans(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plant_batches_user_id ON plant_batches(user_id);
+CREATE INDEX IF NOT EXISTS idx_batch_scan_events_batch_id ON batch_scan_events(batch_id);
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
 CREATE INDEX IF NOT EXISTS idx_disease_name ON disease_info(name);
 

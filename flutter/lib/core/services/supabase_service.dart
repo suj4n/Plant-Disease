@@ -241,6 +241,107 @@ class SupabaseService {
     }
   }
 
+  // ==================== PLANT BATCHES ====================
+
+  static Future<List<Map<String, dynamic>>> getPlantBatches() async {
+    if (!isAuthenticated) return [];
+
+    try {
+      final response = await _client
+          .from('plant_batches')
+          .select()
+          .eq('user_id', currentUser!.id)
+          .order('planted_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getPlantBatch(String id) async {
+    if (!isAuthenticated) return null;
+
+    try {
+      final response = await _client
+          .from('plant_batches')
+          .select()
+          .eq('id', id)
+          .eq('user_id', currentUser!.id)
+          .maybeSingle();
+
+      return response;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> insertPlantBatch(Map<String, dynamic> data) async {
+    if (!isAuthenticated) throw Exception('Not authenticated');
+
+    await _client.from('plant_batches').insert({
+      ...data,
+      'user_id': currentUser!.id,
+    });
+  }
+
+  static Future<void> updatePlantBatch(Map<String, dynamic> data) async {
+    if (!isAuthenticated) throw Exception('Not authenticated');
+
+    await _client
+        .from('plant_batches')
+        .update(data)
+        .eq('id', data['id'])
+        .eq('user_id', currentUser!.id);
+  }
+
+  static Future<void> deletePlantBatch(String id) async {
+    if (!isAuthenticated) throw Exception('Not authenticated');
+
+    await _client
+        .from('batch_scan_events')
+        .delete()
+        .eq('batch_id', id);
+
+    await _client
+        .from('plant_batches')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentUser!.id);
+  }
+
+  static Future<void> addBatchScanEvent({
+    required String batchId,
+    required DateTime occurredAt,
+    String? note,
+  }) async {
+    if (!isAuthenticated) throw Exception('Not authenticated');
+
+    await _client.from('batch_scan_events').insert({
+      'batch_id': batchId,
+      'occurred_at': occurredAt.toIso8601String(),
+      'note': note,
+    });
+  }
+
+  static Future<List<Map<String, dynamic>>> getBatchScanEvents(
+    String batchId,
+  ) async {
+    if (!isAuthenticated) return [];
+
+    try {
+      final response = await _client
+          .from('batch_scan_events')
+          .select()
+          .eq('batch_id', batchId)
+          .order('occurred_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ==================== STORAGE (FIXED) ====================
 
   /// FIXED: Now uses Uint8List instead of List<int>

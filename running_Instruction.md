@@ -1,248 +1,239 @@
-# PlantDoc — How to Run the Backend and Flutter App
+# PlantDoc — Running Instructions
 
-Practical run order on **Windows** with a **physical Android phone** (USB debugging or Wi‑Fi).
+Step-by-step guide to run the Flutter app and FastAPI backend on your machine or phone.
 
 ---
 
-## Smoothest way (one command)
+## 1. Prerequisites
 
-**First time only:**
+Install and verify:
 
 ```powershell
-cd C:\Users\ASUS\Documents\GitHub\Plant-Disease
-.\scripts\setup.ps1
-Copy-Item scripts\config.example.ps1 scripts\config.ps1
-# Edit scripts\config.ps1 → set your Wi‑Fi IP in LanIp
+python --version    # 3.11+ recommended
+flutter doctor      # Android toolchain OK
+adb version         # optional; needed for USB dev script
 ```
 
-**Every day — USB (phone plugged in):**
+You need:
+
+1. **Model file** — `model/plant_best_model.keras` (repo root). Without it, `/health` may work but scans return 503.
+2. **Class labels** — `Resources/class_names.json` (must match model output order).
+3. **Supabase project** — Dashboard → Project Settings → API → `URL` and `anon` key.
+
+---
+
+## 2. First-time setup
+
+Open PowerShell at the **repository root** (`Plant-Disease`):
 
 ```powershell
-cd C:\Users\ASUS\Documents\GitHub\Plant-Disease
+.\scripts\setup.ps1
+```
+
+This script:
+
+- Creates `backend/.venv`, installs Python dependencies, runs `alembic upgrade head`
+- Runs `flutter pub get` in `flutter/`
+
+### Backend `.env`
+
+```powershell
+cd backend
+copy .env.example .env
+# Edit .env: set SECRET_KEY (random string). Add Supabase keys if using server-side scan storage.
+```
+
+### Flutter `.env`
+
+```powershell
+cd flutter
+copy .env.example .env
+```
+
+Edit `flutter/.env`:
+
+```env
+SUPABASE_URL=https://xxxxxxxx.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+API_BASE_URL=http://127.0.0.1:8000
+```
+
+> Do not commit real keys. `.env` is bundled into release APKs via `pubspec.yaml` assets.
+
+### Dev scripts config (optional, for Wi‑Fi script)
+
+```powershell
+cd scripts
+copy config.example.ps1 config.ps1
+# Edit LanIp to your PC IPv4 (ipconfig → Wireless/Ethernet IPv4)
+```
+
+---
+
+## 3. Run the backend manually
+
+```powershell
+cd backend
+. .venv\Scripts\activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Check:
+
+- http://127.0.0.1:8000/health → `{"status":"ok",...}`
+- http://127.0.0.1:8000/docs → Swagger UI
+
+Stop with `Ctrl+C`.
+
+---
+
+## 4. Run the Flutter app
+
+### Option A — USB + one script (recommended on Windows)
+
+Phone: **Developer options** → USB debugging ON, connect via USB.
+
+```powershell
+# From repo root
 .\scripts\dev-usb.ps1
 ```
 
 This will:
 
-1. Open the **backend** in a new PowerShell window  
-2. Wait until `/health` responds  
-3. Run **`adb reverse`**  
-4. Start **`flutter run`** with the correct API URL (no editing `api_service.dart`)
+1. Open a new window with the FastAPI server (`0.0.0.0:8000`)
+2. Wait for `/health`
+3. Run `adb reverse tcp:8000 tcp:8000`
+4. Start `flutter run` with `API_BASE_URL=http://127.0.0.1:8000`
 
-**Every day — Wi‑Fi (no adb):**
+### Option B — Wi‑Fi (same network, no USB)
+
+1. Set `LanIp` in `scripts/config.ps1` to your PC IP (e.g. `192.168.1.75`).
+2. Allow port **8000** in Windows Firewall for private networks.
+3. Run:
 
 ```powershell
 .\scripts\dev-wifi.ps1
 ```
 
-Backend only (one terminal):
+4. Set `API_BASE_URL=http://YOUR_PC_IP:8000` in `flutter/.env` if you run Flutter manually later.
+
+### Option C — Manual Flutter
+
+Backend must already be running.
 
 ```powershell
-.\scripts\backend.ps1
-```
-
----
-
-## Manual steps (if you prefer)
-
-## 1. Backend (FastAPI)
-
-Open a terminal in the repo root:
-
-```powershell
-cd C:\Users\ASUS\Documents\GitHub\Plant-Disease\backend
-```
-
-### First time only
-
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-alembic upgrade head
-```
-
-### Every time you develop
-
-```powershell
-cd C:\Users\ASUS\Documents\GitHub\Plant-Disease\backend
-.venv\Scripts\activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Leave this terminal open. When it’s ready, Uvicorn listens on port **8000**.
-
-### Quick check (on your PC)
-
-
-| URL                                                          | Expected               |
-| ------------------------------------------------------------ | ---------------------- |
-| [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) | `{"status":"healthy"}` |
-| [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)     | Swagger UI             |
-
-
-**Requirements**
-
-- Model file: `model/plant_best_model.keras` (repo root)
-- Class labels: `Resources/class_names.json`
-- First startup may take a minute while TensorFlow loads the model
-
-### Test predict from terminal (optional)
-
-```powershell
-$img = "C:\path\to\your_leaf.jpg"
-curl.exe -X POST "http://127.0.0.1:8000/predict?top_k=5" -F "file=@$img"
-```
-
----
-
-## 2. Flutter app
-
-Open a **second** terminal:
-
-```powershell
-cd C:\Users\ASUS\Documents\GitHub\Plant-Disease\flutter
+cd flutter
 flutter pub get
+flutter run --dart-define=API_BASE_URL=http://127.0.0.1:8000
 ```
 
-Connect the phone with **USB debugging** enabled, then:
+### Android emulator
+
+Emulator can use `http://10.0.2.2:8000` (host loopback). Start backend on the host, then:
 
 ```powershell
-flutter devices
-flutter run
+cd flutter
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
 ---
 
-## 3. Connect the phone to the backend
+## 5. Release APK (install on any phone)
 
-The app sends scans to `POST /predict`. The URL is set in **`flutter/.env`**:
-
-```env
-API_BASE_URL=http://127.0.0.1:8000
-```
-
-For **release APK / production**, use your cloud HTTPS URL (see `docs/CLOUD_SETUP.md`).
-
-Default for USB dev:
+1. Deploy the API to a server with HTTPS, or use Docker on a VPS. See [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md).
+2. Set production URL in `flutter/.env`:
 
 ```env
-API_BASE_URL=http://127.0.0.1:8000
-```
-
-### Option A — USB debugging (recommended)
-
-With the phone plugged in, in a **third** terminal:
-
-```powershell
-adb reverse tcp:8000 tcp:8000
-```
-
-Then `http://127.0.0.1:8000` on the phone forwards to your PC’s port 8000.
-
-> Run `adb reverse` again if you unplug the phone, restart adb, or reboot the device.
-
-Backend can use:
-
-```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Option B — Same Wi‑Fi
-
-1. On PC, run `ipconfig` and note your **IPv4** address (e.g. `192.168.1.42`).
-2. Start the backend with `--host 0.0.0.0` (see above).
-3. In `flutter/.env`, set your PC IP:
-
-```env
-API_BASE_URL=http://192.168.1.75:8000
-```
-
-4. Rebuild the app: `flutter run`.
-
-Phone and PC must be on the same network. Allow port **8000** through Windows Firewall if requests fail.
-
-### Android permissions
-
-Configured in `flutter/android/app/src/main/AndroidManifest.xml`:
-
-- `INTERNET`, `CAMERA`, `READ_MEDIA_IMAGES`
-- `android:usesCleartextTraffic="true"` (for HTTP during development only)
-
----
-
-## 4. Build a release APK (cloud ML)
-
-1. Deploy the backend with your model (see **`docs/CLOUD_SETUP.md`**).
-2. Set in `flutter/.env`:
-
-```env
-API_BASE_URL=https://your-deployed-api.example.com
+API_BASE_URL=https://your-api.example.com
 ```
 
 3. Build:
 
 ```powershell
 cd flutter
+flutter pub get
 flutter build apk --release
 ```
 
-4. Install `build/app/outputs/flutter-apk/app-release.apk` on the phone.
+4. Install APK:
 
-Auth uses Supabase over the internet; scans use `API_BASE_URL` — **not** `127.0.0.1` on a standalone APK.
+```text
+flutter\build\app\outputs\flutter-apk\app-release.apk
+```
 
----
+Copy to the phone or:
 
-## 5. Test a scan in the app
+```powershell
+adb install -r flutter\build\app\outputs\flutter-apk\app-release.apk
+```
 
-1. Backend is running.
-2. `adb reverse tcp:8000 tcp:8000` (if using USB).
-3. Open the app → **Scan** → camera or gallery → **Analyze leaf**.
+5. On the phone: allow **Camera** and **Notifications** (plant reminders) when prompted.
 
-Use a **clear photo of a single leaf**; busy or non-leaf images may return “No leaf detected”.
-
----
-
-## Troubleshooting
-
-
-| Problem                        | What to check                                                   |
-| ------------------------------ | --------------------------------------------------------------- |
-| Analysis fails / no connection | Backend running? Correct `baseUrl`? USB: `adb reverse` again    |
-| `SocketException` on phone     | Wi‑Fi: PC IP correct? Firewall allows port 8000                 |
-| Backend won’t start            | Python 3.11+, venv activated, `pip install -r requirements.txt` |
-| Model error on startup         | `model/plant_best_model.keras` exists                           |
-
+> A release APK built with `API_BASE_URL=http://127.0.0.1:8000` cannot reach your PC’s API. Use a public HTTPS URL.
 
 ---
 
-## Quick reference
+## 6. Docker (API in container)
 
+From repo root:
 
-| Step          | Command / action                                                                             |
-| ------------- | -------------------------------------------------------------------------------------------- |
-| 1. Backend    | `cd backend` → activate `.venv` → `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` |
-| 2. USB bridge | `adb reverse tcp:8000 tcp:8000`                                                              |
-| 3. Flutter    | `cd flutter` → `flutter pub get` → `flutter run`                                             |
-| 4. API URL    | `API_BASE_URL` in `flutter/.env` (USB / Wi‑Fi / cloud HTTPS)                                 |
-| 5. APK        | `flutter build apk --release` after setting cloud `API_BASE_URL`                               |
+```powershell
+docker compose up --build
+```
 
+- API: http://localhost:8000
+- Ensure `model/plant_best_model.keras` exists before build.
 
-**Order:** start **backend** → run **adb reverse** (USB) → run **flutter run**.
+Point `flutter/.env` `API_BASE_URL` at `http://YOUR_PC_IP:8000` for phone testing on LAN, or at your deployed URL for APK.
 
 ---
 
-## API endpoints (reference)
+## 7. Using the app
 
+1. Open app → **Welcome** → register/login (Supabase).
+2. **Home** → **Scan** → take or pick a leaf photo → analyze.
+3. **History** — past scans (local storage).
+4. **Plant tracker** — create a batch, log growth stages, set reminders (local notifications).
 
-| Method | Path                    | Description                     |
-| ------ | ----------------------- | ------------------------------- |
-| GET    | `/health`               | Health check                    |
-| POST   | `/predict?top_k=5`      | Flutter scan (multipart `file`) |
-| POST   | `/api/v1/detect`        | Structured detection response   |
-| POST   | `/api/v1/auth/register` | Register user                   |
-| POST   | `/api/v1/auth/login`    | Login                           |
-| GET    | `/api/v1/history`       | Scan history (JWT required)     |
+---
 
+## 8. Troubleshooting
 
-Full details: `backend/README.md`
+| Problem | What to do |
+|---------|------------|
+| `Cannot reach the analysis server` | Wrong `API_BASE_URL`; API not running; release APK still using `127.0.0.1` |
+| Backend not ready / connection refused | Wait for model load; check http://127.0.0.1:8000/health |
+| `adb not found` | Install Android SDK platform-tools; set `AdbPath` in `scripts/config.ps1` |
+| `adb reverse` fails | USB debugging authorized; only one device: `adb devices` |
+| Wi‑Fi: phone can’t reach PC | Same Wi‑Fi; correct `LanIp`; firewall allows port 8000 |
+| 503 / model not loaded | Add `model/plant_best_model.keras`; check backend logs |
+| Wrong disease names | Fix order in `Resources/class_names.json` to match model |
+| Supabase auth errors | Check `SUPABASE_URL` (project URL, not REST path) and `SUPABASE_ANON_KEY` in `flutter/.env` |
+| Cleartext HTTP blocked | Dev: `android:usesCleartextTraffic="true"` in manifest; production: use HTTPS |
+| Plant reminders not firing | Grant notification permission; open app once after install |
+
+---
+
+## 9. Useful commands (cheat sheet)
+
+```powershell
+# Setup once
+.\scripts\setup.ps1
+
+# Dev with phone (USB)
+.\scripts\dev-usb.ps1
+
+# Dev with phone (Wi‑Fi)
+.\scripts\dev-wifi.ps1
+
+# Backend only (current terminal)
+.\scripts\backend.ps1
+
+# Tests
+cd backend; . .venv\Scripts\activate; pytest -q
+
+# Release APK
+cd flutter; flutter build apk --release
+```
+
+For API endpoints, model paths, and deployment platforms, see [backend/README.md](backend/README.md) and [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md).
