@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
-import '../core/widgets/app_card.dart';
 import '../core/widgets/app_shell.dart';
-import '../core/widgets/page_background.dart';
+import '../core/widgets/crop_strip.dart';
+import '../core/widgets/state_views.dart';
 import '../features/plant_tracker/providers/plant_batch_provider.dart';
 import '../features/plant_tracker/widgets/create_batch_sheet.dart';
 import '../features/plant_tracker/widgets/plant_batch_card.dart';
 import 'plant_batch_detail_screen.dart';
 
-/// Plant batches dashboard with local storage and scan reminders.
+/// Plant batches with local storage and two-weekly scan reminders.
+/// Behaviour is unchanged; only the presentation moved to the new system.
 class PlantTrackerScreen extends StatefulWidget {
   const PlantTrackerScreen({super.key, this.suggestedPlantType});
 
-  /// Optional plant type pre-selected when opening from home crop grid.
+  /// Optional plant type pre-selected when opening from elsewhere.
   final String? suggestedPlantType;
 
   @override
@@ -29,7 +29,7 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PlantBatchProvider>().loadBatches();
+      if (mounted) context.read<PlantBatchProvider>().loadBatches();
     });
   }
 
@@ -46,17 +46,15 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
           plantedDate: result['plantedDate'] as DateTime,
         );
 
-    if (!mounted) return;
-    if (batch != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    if (!mounted || batch == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
         const SnackBar(
-          content: Text('Batch saved — reminders scheduled every 2 weeks'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
+          content: Text('Plant saved. We will remind you to scan every 2 weeks.'),
         ),
       );
-      _openDetail(batch.id);
-    }
+    _openDetail(batch.id);
   }
 
   void _openDetail(String batchId) {
@@ -66,125 +64,81 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
         builder: (_) => PlantBatchDetailScreen(batchId: batchId),
       ),
     ).then((_) {
-      if (mounted) {
-        context.read<PlantBatchProvider>().loadBatches();
-      }
+      if (mounted) context.read<PlantBatchProvider>().loadBatches();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      navIndex: 2,
-      background: const PageBackground(overlayOpacity: 0.72),
-      appBar: AppBar(
-        title: const Text('Plant Tracker'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: 'Add batch',
-            onPressed: _openCreateBatch,
-          ),
-        ],
-      ),
-      body: Consumer<PlantBatchProvider>(
-        builder: (context, provider, _) {
-          if (provider.loading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          return RefreshIndicator(
-            color: AppColors.primary,
-            onRefresh: provider.loadBatches,
-            child: AppScrollBody(
-              children: [
-                if (provider.isEmpty)
-                  _EmptyState(
-                    suggestedPlantType: widget.suggestedPlantType,
-                    onCreate: () => _openCreateBatch(
-                      plantType: widget.suggestedPlantType,
+    return Consumer<PlantBatchProvider>(
+      builder: (context, provider, _) {
+        return AppShell(
+          onRefresh: provider.loadBatches,
+          body: AppScrollBody(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('My plants', style: AppTextStyles.headlineMedium),
+                        const SizedBox(height: 2),
+                        Text(
+                          provider.isEmpty
+                              ? 'Track a planting to get scan reminders'
+                              : '${provider.batches.length} '
+                                  '${provider.batches.length == 1 ? 'planting' : 'plantings'} tracked',
+                          style: AppTextStyles.bodySmall,
+                        ),
+                      ],
                     ),
-                  )
-                else ...[
-                  for (var i = 0; i < provider.batches.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: PlantBatchCard(
-                        batch: provider.batches[i],
-                        animationIndex: i,
-                        onTap: () => _openDetail(provider.batches[i].id),
-                      ),
+                  ),
+                  if (!provider.isEmpty)
+                    IconButton(
+                      onPressed: _openCreateBatch,
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      tooltip: 'Add a plant',
+                      iconSize: 24,
+                      color: AppColors.primaryDark,
                     ),
                 ],
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.onCreate,
-    this.suggestedPlantType,
-  });
-
-  final VoidCallback onCreate;
-  final String? suggestedPlantType;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              shape: BoxShape.circle,
-              boxShadow: AppColors.primaryGlow,
-            ),
-            child: const Icon(
-              Icons.eco_outlined,
-              size: 36,
-              color: AppColors.onPrimary,
-            ),
-          )
-              .animate(onPlay: (c) => c.repeat(reverse: true))
-              .scale(
-                begin: const Offset(1, 1),
-                end: const Offset(1.05, 1.05),
-                duration: 2.seconds,
               ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            'No plant batches yet',
-            style: AppTextStyles.headlineSmall,
-            textAlign: TextAlign.center,
+              const SizedBox(height: AppSpacing.md),
+              if (provider.loading)
+                const LoadingState(rows: 3, rowHeight: 110)
+              else if (provider.isEmpty)
+                EmptyState(
+                  icon: Icons.local_florist_outlined,
+                  title: 'Add your first plant',
+                  message: widget.suggestedPlantType != null
+                      ? 'Track your ${widget.suggestedPlantType} crop and we '
+                          'will remind you to scan it every two weeks.'
+                      : 'Add a planting with a name, crop type and planting '
+                          'date, and we will remind you to scan it every two '
+                          'weeks.',
+                  actionLabel: 'Add a plant',
+                  onAction: () =>
+                      _openCreateBatch(plantType: widget.suggestedPlantType),
+                  footer: const CropStrip(
+                    thumbSize: 48,
+                    caption: 'PlantDoc can track these crops',
+                  ),
+                )
+              else
+                for (var i = 0; i < provider.batches.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: PlantBatchCard(
+                      batch: provider.batches[i],
+                      animationIndex: i,
+                      onTap: () => _openDetail(provider.batches[i].id),
+                    ),
+                  ),
+            ],
           ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            suggestedPlantType != null
-                ? 'Create a batch for your $suggestedPlantType crop and we\'ll remind you to scan every 2 weeks.'
-                : 'Add your first batch with a name, crop type, and planting date.',
-            style: AppTextStyles.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: onCreate,
-              icon: const Icon(Icons.add),
-              label: const Text('Create plant batch'),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.06, end: 0);
+        );
+      },
+    );
   }
 }

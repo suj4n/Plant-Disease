@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
+
 import '../core/services/scan_storage.dart';
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_radius.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
-import '../core/widgets/app_card.dart';
+import '../core/utils/formatting.dart';
 import '../core/widgets/app_shell.dart';
 import '../core/widgets/scan_activity_tile.dart';
-import '../core/widgets/section_header.dart';
+import '../core/widgets/state_views.dart';
+import '../data/models/detection_result.dart';
 
+enum HistoryFilter { all, healthy, diseased }
+
+/// Past diagnoses, searchable and filterable.
+///
+/// Search and filtering run over the already-loaded local list, so they keep
+/// working with no network.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -16,323 +25,342 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Healthy', 'Diseased'];
+  final TextEditingController _searchController = TextEditingController();
 
-  List<Map<String, dynamic>> _allScans = [];
-  List<Map<String, dynamic>> _filteredScans = [];
-  bool _loading = true;
-  String _searchQuery = '';
+  List<Map<String, dynamic>> _all = const [];
+  ViewStatus _status = ViewStatus.loading;
+  HistoryFilter _filter = HistoryFilter.all;
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _loadScans();
+    _load();
   }
 
-  Future<void> _loadScans() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (mounted && _status != ViewStatus.loading) {
+      setState(() => _status = ViewStatus.loading);
+    }
     final scans = await ScanStorage.getAll();
     if (!mounted) return;
     setState(() {
-      _allScans = scans;
-      _applyFilters();
-      _loading = false;
+      _all = scans;
+      _status = scans.isEmpty ? ViewStatus.empty : ViewStatus.ready;
     });
   }
 
-  void _applyFilters() {
-    var result = List<Map<String, dynamic>>.from(_allScans);
-    if (_selectedFilter == 'Healthy') {
-      result = result.where((s) => s['isHealthy'] == true).toList();
-    } else if (_selectedFilter == 'Diseased') {
-      result = result.where((s) => s['isHealthy'] == false).toList();
-    }
-    if (_searchQuery.isNotEmpty) {
-      result = result
-          .where(
-            (s) => (s['disease']?.toString() ?? '')
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()),
-          )
-          .toList();
-    }
-    _filteredScans = result;
+  List<Map<String, dynamic>> get _visible {
+    final query = _query.trim().toLowerCase();
+    return _all.where((scan) {
+      final healthy = scan['isHealthy'] == true;
+      final matchesFilter = switch (_filter) {
+        HistoryFilter.all => true,
+        HistoryFilter.healthy => healthy,
+        HistoryFilter.diseased => !healthy,
+      };
+      if (!matchesFilter) return false;
+      if (query.isEmpty) return true;
+
+      final haystack = [
+        scan['disease']?.toString() ?? '',
+        scan['plant']?.toString() ?? '',
+      ].join(' ').toLowerCase();
+      return haystack.contains(query);
+    }).toList();
   }
 
-  String _formatTimeAgo(String? timestamp) {
-    if (timestamp == null || timestamp.isEmpty) return 'Unknown';
-    try {
-      final diff = DateTime.now().difference(DateTime.parse(timestamp));
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
-    } catch (_) {
-      return 'Unknown';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppShell(
-      navIndex: 1,
-      appBar: AppBar(title: const Text('History')),
-      body: AppScrollBody(
-        children: [
-          TextField(
-            onChanged: (v) => setState(() {
-              _searchQuery = v;
-              _applyFilters();
-            }),
-            decoration: const InputDecoration(
-              hintText: 'Search scans',
-              prefixIcon: Icon(Icons.search, size: 20),
-            ),
+  Future<void> _confirmClear() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all scans?'),
+        content: const Text(
+          'This permanently removes every saved diagnosis. It cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: AppSpacing.md),
-          _WeeklyChartCard(scans: _allScans),
-          const SizedBox(height: AppSpacing.md),
-          _QuickStatsRow(scans: _allScans),
-          const SizedBox(height: AppSpacing.md),
-          _FilterChips(
-            filters: _filters,
-            selected: _selectedFilter,
-            onSelected: (f) => setState(() {
-              _selectedFilter = f;
-              _applyFilters();
-            }),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          const SectionHeader(title: 'Scan history'),
-          const SizedBox(height: AppSpacing.sm),
-          _ScanList(
-            loading: _loading,
-            scans: _filteredScans,
-            formatTimeAgo: _formatTimeAgo,
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Clear all'),
           ),
         ],
       ),
     );
+
+    if (confirmed != true) return;
+    await ScanStorage.clearAll();
+    await _load();
   }
-}
-
-class _WeeklyChartCard extends StatelessWidget {
-  const _WeeklyChartCard({required this.scans});
-
-  final List<Map<String, dynamic>> scans;
 
   @override
   Widget build(BuildContext context) {
-    final counts = ScanStorage.scanCountsForCurrentWeek(scans);
-    final totalThisWeek = counts.fold<int>(0, (sum, c) => sum + c);
-    final maxCount = counts.reduce((a, b) => a > b ? a : b);
+    final visible = _visible;
 
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return AppShell(
+      onRefresh: _load,
+      body: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text('Weekly scans', style: AppTextStyles.headlineSmall),
-              ),
-              if (totalThisWeek > 0)
-                Text(
-                  '$totalThisWeek this week',
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: AppColors.primary,
-                  ),
-                ),
-            ],
+          _Header(
+            total: _all.length,
+            onClear: _all.isEmpty ? null : _confirmClear,
           ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            height: 108,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              crossAxisAlignment: CrossAxisAlignment.end,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _query = value),
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Search by disease or plant',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _FilterRow(
+            selected: _filter,
+            onChanged: (f) => setState(() => _filter = f),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Expanded(child: _buildList(visible)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList(List<Map<String, dynamic>> visible) {
+    if (_status == ViewStatus.loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        child: LoadingState(rows: 5),
+      );
+    }
+
+    if (_all.isEmpty) {
+      return _centered(
+        const EmptyState(
+          icon: Icons.history_rounded,
+          title: 'No scans yet',
+          message:
+              'Scan your first plant to start building your plant health '
+              'history.',
+        ),
+      );
+    }
+
+    if (visible.isEmpty) {
+      return _centered(
+        EmptyState(
+          icon: Icons.search_off_rounded,
+          title: 'No matches',
+          message: _query.isNotEmpty
+              ? 'Nothing matches "$_query". Try a different search.'
+              : 'No scans in this category yet.',
+          actionLabel: 'Show all scans',
+          onAction: () {
+            _searchController.clear();
+            setState(() {
+              _query = '';
+              _filter = HistoryFilter.all;
+            });
+          },
+          compact: true,
+        ),
+      );
+    }
+
+    // ListView.builder so only visible rows are built, however long the
+    // history gets.
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppScrollBody.navClearance(context),
+      ),
+      itemCount: visible.length,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.xs),
+      itemBuilder: (context, index) {
+        final scan = visible[index];
+        return ScanActivityTile(
+          title: scan['disease']?.toString() ?? 'Unknown',
+          plant: scan['plant']?.toString(),
+          subtitle: formatRelativeTimestamp(scan['timestamp']),
+          confidence: confidencePercentOf(scan['confidence']),
+          isHealthy: scan['isHealthy'] == true,
+          isIdentifiable: scan['isIdentifiable'] as bool? ?? true,
+          imagePath: scan['imagePath'] as String?,
+        );
+      },
+    );
+  }
+
+  Widget _centered(Widget child) => ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppScrollBody.navClearance(context),
+        ),
+        children: [child],
+      );
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.total, required this.onClear});
+
+  final int total;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.xs,
+        AppSpacing.md,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var i = 0; i < 7; i++)
-                  _DayBar(
-                    label: ScanStorage.weekdayLabels[i],
-                    count: counts[i],
-                    factor: maxCount == 0 ? 0 : counts[i] / maxCount,
-                  ),
+                Text('Scan history', style: AppTextStyles.headlineMedium),
+                const SizedBox(height: 2),
+                Text(
+                  total == 0
+                      ? 'Your diagnoses will appear here'
+                      : '$total ${total == 1 ? 'scan' : 'scans'} saved',
+                  style: AppTextStyles.bodySmall,
+                ),
               ],
             ),
           ),
-          if (totalThisWeek == 0) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'No scans recorded this week',
-              style: AppTextStyles.bodySmall,
+          if (onClear != null)
+            IconButton(
+              onPressed: onClear,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Clear all scans',
+              iconSize: 22,
             ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _DayBar extends StatelessWidget {
-  const _DayBar({
-    required this.label,
-    required this.count,
-    required this.factor,
-  });
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({required this.selected, required this.onChanged});
 
-  final String label;
-  final int count;
-  final double factor;
-
-  static const double _maxBarHeight = 64;
+  final HistoryFilter selected;
+  final ValueChanged<HistoryFilter> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final barHeight = factor > 0 ? _maxBarHeight * factor : 4.0;
+    const labels = {
+      HistoryFilter.all: 'All',
+      HistoryFilter.healthy: 'Healthy',
+      HistoryFilter.diseased: 'Diseased',
+    };
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        if (count > 0)
-          Text(
-            '$count',
-            style: AppTextStyles.labelSmall.copyWith(color: AppColors.primary),
-          )
-        else
-          const SizedBox(height: 14),
-        const SizedBox(height: 4),
-        Container(
-          width: 24,
-          height: barHeight,
-          decoration: BoxDecoration(
-            color: count > 0
-                ? AppColors.primary.withValues(alpha: 0.85)
-                : AppColors.glassFill,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+    return SizedBox(
+      // 48dp so each chip clears the Android touch-target minimum.
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        children: [
+          for (final entry in labels.entries)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.xs),
+              child: _Chip(
+                label: entry.value,
+                selected: selected == entry.key,
+                onTap: () => onChanged(entry.key),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: selected ? AppColors.primary : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              border: Border.all(
+                color: selected ? AppColors.primary : AppColors.border,
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              alignment: Alignment.center,
+              child: Text(
+                label,
+                style: AppTextStyles.labelLarge
+                    .withWeight(selected ? FontWeight.w600 : FontWeight.w500)
+                    .copyWith(
+                      color:
+                          selected ? AppColors.onPrimary : AppColors.foreground,
+                    ),
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(label, style: AppTextStyles.labelSmall),
-      ],
-    );
-  }
-}
-
-class _QuickStatsRow extends StatelessWidget {
-  const _QuickStatsRow({required this.scans});
-
-  final List<Map<String, dynamic>> scans;
-
-  @override
-  Widget build(BuildContext context) {
-    final healthy = scans.where((s) => s['isHealthy'] == true).length;
-    final diseased = scans.where((s) => s['isHealthy'] == false).length;
-
-    return Row(
-      children: [
-        Expanded(child: _StatTile(label: 'Total', value: '${scans.length}', color: AppColors.indigo)),
-        const SizedBox(width: AppSpacing.xs),
-        Expanded(child: _StatTile(label: 'Healthy', value: '$healthy', color: AppColors.success)),
-        const SizedBox(width: AppSpacing.xs),
-        Expanded(child: _StatTile(label: 'Diseased', value: '$diseased', color: AppColors.error)),
-      ],
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      padding: const EdgeInsets.symmetric(
-        vertical: AppSpacing.sm,
-        horizontal: AppSpacing.xs,
       ),
-      child: Column(
-        children: [
-          Text(value, style: AppTextStyles.headlineSmall.copyWith(color: color)),
-          const SizedBox(height: 4),
-          Text(label, style: AppTextStyles.labelSmall, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterChips extends StatelessWidget {
-  const _FilterChips({
-    required this.filters,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<String> filters;
-  final String selected;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.xs,
-      children: filters.map((filter) {
-        return ChoiceChip(
-          label: Text(filter),
-          selected: selected == filter,
-          onSelected: (_) => onSelected(filter),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _ScanList extends StatelessWidget {
-  const _ScanList({
-    required this.loading,
-    required this.scans,
-    required this.formatTimeAgo,
-  });
-
-  final bool loading;
-  final List<Map<String, dynamic>> scans;
-  final String Function(String?) formatTimeAgo;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Padding(
-        padding: EdgeInsets.all(AppSpacing.lg),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (scans.isEmpty) {
-      return AppCard(
-        child: Center(child: Text('No scans found', style: AppTextStyles.bodyMedium)),
-      );
-    }
-
-    return Column(
-      children: scans.map((scan) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-          child: ScanActivityTile(
-            title: scan['disease'] as String? ?? 'Unknown',
-            subtitle: formatTimeAgo(scan['timestamp'] as String?),
-            confidence: scan['confidence'] as int? ?? 0,
-            isHealthy: scan['isHealthy'] as bool? ?? false,
-          ),
-        );
-      }).toList(),
     );
   }
 }

@@ -1,26 +1,32 @@
 import 'package:flutter/material.dart';
+import 'main_shell.dart';
 
-/// Bottom nav index → route name.
+/// Navigation helpers.
+///
+/// Tab switching happens inside [MainShell] (an IndexedStack), not by pushing
+/// routes, so tab state survives and the back button stays predictable.
 class AppNavigator {
   AppNavigator._();
 
-  static const Map<int, String> tabRoutes = {
-    0: '/home',
-    1: '/history',
-    2: '/tracker',
-    3: '/profile',
-  };
+  static const int homeTab = 0;
+  static const int historyTab = 1;
+  static const int plantsTab = 2;
+  static const int profileTab = 3;
 
   static void goToTab(BuildContext context, int index, {int? currentIndex}) {
-    if (currentIndex != null && index == currentIndex) return;
-    final route = tabRoutes[index];
-    if (route != null) {
-      Navigator.pushReplacementNamed(context, route);
+    final shell = MainShell.of(context);
+    if (shell != null) {
+      shell.setTab(index);
+      return;
     }
+    // Called from a pushed screen (e.g. scan result): pop back to the shell
+    // and open the requested tab there.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    MainShell.of(context)?.setTab(index);
   }
 
-  static void goToScan(BuildContext context) {
-    Navigator.pushNamed(context, '/scan');
+  static Future<void> goToScan(BuildContext context) async {
+    await Navigator.pushNamed(context, '/scan');
   }
 
   static void goToPlantTracker(
@@ -28,12 +34,6 @@ class AppNavigator {
     int? cropIndex,
     String? plantType,
   }) {
-    final args = plantType ??
-        (cropIndex != null ? cropIndex : null);
-    Navigator.pushReplacementNamed(
-      context,
-      '/tracker',
-      arguments: args,
-    );
+    goToTab(context, plantsTab);
   }
 }

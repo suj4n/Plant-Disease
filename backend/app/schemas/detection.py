@@ -1,27 +1,63 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+RiskLevel = Literal["low", "medium", "high"]
+
 
 class PredictionResult(BaseModel):
+    """The single most likely class, plus everything the UI needs to frame it."""
+
     disease: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, description="Model confidence, 0-1.")
     plant: str
     description: str
-    treatment: list[str]
-    prevention: list[str]
+    symptoms: list[str] = Field(default_factory=list)
+    treatment: list[str] = Field(default_factory=list)
+    prevention: list[str] = Field(default_factory=list)
     is_healthy: bool = False
+    #: False for Background_without_leaves — the client shows a recovery state
+    #: instead of a diagnosis, and must never render ``class_label`` to a user.
+    is_identifiable: bool = True
+    #: Agronomic severity of the disease, independent of model confidence.
+    risk_level: RiskLevel = "medium"
+    scientific_name: str | None = None
     class_label: str | None = None
+
+
+class AlternativePrediction(BaseModel):
+    disease: str
+    plant: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    class_label: str
+
+
+class DetectionInformation(BaseModel):
+    description: str
+    symptoms: list[str] = Field(default_factory=list)
+    treatment: list[str] = Field(default_factory=list)
+    prevention: list[str] = Field(default_factory=list)
+
+
+class DetectionMetadata(BaseModel):
+    model_version: str
+    processing_time_ms: int
+
+    # ``model_`` is a protected prefix in pydantic v2 namespaces.
+    model_config = {"protected_namespaces": ()}
 
 
 class DetectResponse(BaseModel):
     success: bool = True
     prediction: PredictionResult
+    alternatives: list[AlternativePrediction] = Field(default_factory=list)
+    information: DetectionInformation
+    metadata: DetectionMetadata
 
 
 class LegacyPredictResponse(BaseModel):
-    """Backward-compatible shape for the existing Flutter client."""
+    """Backward-compatible shape for the existing Flutter client (`POST /predict`)."""
 
     disease: str
     confidence: float

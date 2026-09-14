@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../core/providers/auth_provider.dart';
 import '../core/theme/app_colors.dart';
-import '../core/theme/app_radius.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
+import '../core/widgets/app_card.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -92,9 +92,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     height: 88,
                     width: 88,
                     decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
+                      color: AppColors.primary,
                       shape: BoxShape.circle,
-                      boxShadow: AppColors.primaryGlow,
                     ),
                     child: const Icon(
                       Icons.person_add_rounded,
@@ -108,7 +107,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 Center(
                   child: Text(
-                    'Create Account',
+                    'Create your account',
                     style: AppTextStyles.headlineLarge,
                   ),
                 ),
@@ -117,7 +116,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 Center(
                   child: Text(
-                    'Sign up to start using PlantDoc',
+                    'Save your scans and reach them from any device.',
                     style: AppTextStyles.bodyMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -125,15 +124,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 36),
 
-                Container(
+                AppCard(
                   padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.glassFill,
-                    borderRadius: AppRadius.card,
-                    border: Border.all(
-                      color: AppColors.glassBorder,
-                    ),
-                  ),
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -141,6 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _nameController,
                           textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.name],
                           decoration: const InputDecoration(
                             labelText: 'Full Name',
                             prefixIcon: Icon(Icons.person_outline),
@@ -159,6 +152,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.email],
                           decoration: const InputDecoration(
                             labelText: 'Email',
                             prefixIcon: Icon(Icons.email_outlined),
@@ -181,6 +175,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _passwordController,
                           obscureText: _obscurePassword,
+                          autofillHints: const [AutofillHints.newPassword],
                           textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'Password',

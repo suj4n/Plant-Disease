@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/constants/app_stats.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/crop_thumb.dart';
 import '../models/plant_batch.dart';
 
 /// Compact square tile for the home screen batch grid.
@@ -21,7 +21,6 @@ class HomeBatchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final crop = AppStats.cropByName(batch.plantType);
     final urgent = batch.isReminderDueSoon;
 
     return AppCard(
@@ -32,24 +31,15 @@ class HomeBatchTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: crop.color.withValues(alpha: 0.22),
-                  border: Border.all(color: crop.color.withValues(alpha: 0.35)),
-                  borderRadius: AppRadius.card,
-                ),
-                child: Icon(crop.icon, color: crop.color, size: 20),
-              ),
+              CropThumb(plantType: batch.plantType, size: 40),
               const Spacer(),
               if (urgent)
                 Icon(
                   Icons.notifications_active,
                   size: 18,
                   color: batch.isReminderDueToday
-                      ? AppColors.amber
-                      : AppColors.primary,
+                      ? AppColors.warning
+                      : AppColors.primaryDark,
                 ),
             ],
           ),
@@ -75,7 +65,7 @@ class HomeBatchTile extends StatelessWidget {
           Text(
             batch.nextReminderSummary,
             style: AppTextStyles.labelSmall.copyWith(
-              color: urgent ? AppColors.primary : AppColors.mutedForeground,
+              color: urgent ? AppColors.primaryDark : AppColors.mutedForeground,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -104,20 +94,21 @@ class HomeAddBatchTile extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.glassFill,
+              color: AppColors.softGreen,
               borderRadius: AppRadius.card,
-              border: Border.all(color: AppColors.glassBorder),
             ),
             child: const Icon(
               Icons.add_rounded,
-              color: AppColors.primary,
+              color: AppColors.primaryDark,
               size: 22,
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Add batch',
-            style: AppTextStyles.titleMedium.copyWith(color: AppColors.primary),
+            'Add plant',
+            style: AppTextStyles.titleMedium.copyWith(
+              color: AppColors.primaryDark,
+            ),
             textAlign: TextAlign.center,
           ),
         ],

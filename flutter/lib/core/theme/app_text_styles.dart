@@ -1,105 +1,136 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
-/// Typography: title (bold), subtitle (medium), body (normal).
+/// Typography: Outfit for display/headings, Inter for body and labels.
+///
+/// Both are bundled variable fonts (see pubspec `fonts:`), not fetched at
+/// runtime. `google_fonts` downloaded them from fonts.gstatic.com on first use,
+/// which threw an unhandled exception and silently fell back to the system
+/// typeface on any device that was offline at first launch.
+///
+/// Because these are variable files, the weight is set on the `wght` axis as
+/// well as `fontWeight`: `fontWeight` only picks a file, and there is one file
+/// per family.
 abstract final class AppTextStyles {
   AppTextStyles._();
 
-  static TextStyle get _base => GoogleFonts.inter(color: AppColors.foreground);
-
-  static TextStyle get displayLarge => _base.copyWith(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
-        letterSpacing: -0.5,
+  static TextStyle _font(
+    String family,
+    FontWeight weight, {
+    required double size,
+    required double height,
+    Color? color,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: family,
+        fontSize: size,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? AppColors.foreground,
+        fontWeight: weight,
+        fontVariations: [FontVariation('wght', weight.value.toDouble())],
       );
 
-  static TextStyle get displayMedium => _base.copyWith(
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
-      );
+  static TextStyle _heading(
+    FontWeight weight, {
+    required double size,
+    required double height,
+    double? letterSpacing,
+  }) =>
+      _font('Outfit', weight,
+          size: size, height: height, letterSpacing: letterSpacing);
 
-  static TextStyle get headlineLarge => _base.copyWith(
-        fontSize: 24,
-        fontWeight: FontWeight.w700,
-        height: 1.3,
-      );
+  static TextStyle _body(
+    FontWeight weight, {
+    required double size,
+    required double height,
+    Color? color,
+  }) =>
+      _font('Inter', weight, size: size, height: height, color: color);
 
-  static TextStyle get headlineMedium => _base.copyWith(
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        height: 1.3,
-      );
+  // --- Display / headings (Outfit) --------------------------------------
+  static TextStyle get displayLarge =>
+      _heading(FontWeight.w700, size: 32, height: 1.2, letterSpacing: -0.6);
 
-  static TextStyle get headlineSmall => _base.copyWith(
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        height: 1.35,
-      );
+  static TextStyle get displayMedium =>
+      _heading(FontWeight.w600, size: 28, height: 1.22, letterSpacing: -0.5);
 
-  static TextStyle get titleLarge => _base.copyWith(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      );
+  static TextStyle get headlineLarge =>
+      _heading(FontWeight.w600, size: 24, height: 1.3, letterSpacing: -0.3);
 
-  static TextStyle get titleMedium => _base.copyWith(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      );
+  static TextStyle get headlineMedium =>
+      _heading(FontWeight.w600, size: 20, height: 1.3, letterSpacing: -0.2);
 
-  static TextStyle get titleSmall => _base.copyWith(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      );
+  static TextStyle get headlineSmall =>
+      _heading(FontWeight.w600, size: 18, height: 1.35);
 
-  static TextStyle get bodyLarge => _base.copyWith(
-        fontSize: 16,
-        fontWeight: FontWeight.w400,
+  // --- Titles (Inter, for denser UI chrome) -----------------------------
+  static TextStyle get titleLarge =>
+      _body(FontWeight.w600, size: 16, height: 1.4);
+
+  static TextStyle get titleMedium =>
+      _body(FontWeight.w600, size: 14, height: 1.4);
+
+  static TextStyle get titleSmall =>
+      _body(FontWeight.w600, size: 13, height: 1.4);
+
+  // --- Body -------------------------------------------------------------
+  static TextStyle get bodyLarge => _body(
+        FontWeight.w400,
+        size: 16,
+        height: 1.55,
         color: AppColors.foregroundSecondary,
-        height: 1.5,
       );
 
-  static TextStyle get bodyMedium => _base.copyWith(
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
+  static TextStyle get bodyMedium => _body(
+        FontWeight.w400,
+        size: 14,
+        height: 1.55,
         color: AppColors.foregroundSecondary,
-        height: 1.5,
       );
 
-  static TextStyle get bodySmall => _base.copyWith(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
+  /// 12px is the floor for body-adjacent text — nothing smaller carries meaning.
+  static TextStyle get bodySmall => _body(
+        FontWeight.w400,
+        size: 12,
+        height: 1.5,
         color: AppColors.muted,
-        height: 1.5,
       );
 
-  static TextStyle get labelLarge => _base.copyWith(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
+  // --- Labels / metadata ------------------------------------------------
+  static TextStyle get labelLarge =>
+      _body(FontWeight.w500, size: 14, height: 1.4);
+
+  static TextStyle get labelMedium => _body(
+        FontWeight.w500,
+        size: 12,
         height: 1.4,
-      );
-
-  static TextStyle get labelMedium => _base.copyWith(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
         color: AppColors.foregroundSecondary,
-        height: 1.4,
       );
 
-  static TextStyle get labelSmall => _base.copyWith(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
+  static TextStyle get labelSmall => _body(
+        FontWeight.w500,
+        size: 12,
+        height: 1.4,
         color: AppColors.muted,
-        height: 1.4,
       );
 
-  static TextStyle get statNumber => headlineMedium;
-  static TextStyle get statLabel => labelSmall;
+  // --- Aliases ----------------------------------------------------------
   static TextStyle get chipText => labelLarge;
-  static TextStyle get buttonText => titleMedium.copyWith(color: AppColors.onPrimary);
+  static TextStyle get buttonText => _body(
+        FontWeight.w600,
+        size: 15,
+        height: 1.4,
+        color: AppColors.onPrimary,
+      );
+}
+
+/// Changing `fontWeight` alone on a variable font does nothing — the weight
+/// lives on the `wght` axis. This keeps the two in step.
+extension VariableWeight on TextStyle {
+  TextStyle withWeight(FontWeight weight) => copyWith(
+        fontWeight: weight,
+        fontVariations: [FontVariation('wght', weight.value.toDouble())],
+      );
 }

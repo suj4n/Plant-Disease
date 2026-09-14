@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../../core/constants/app_stats.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/crop_thumb.dart';
 import '../models/plant_batch.dart';
 
 class PlantBatchCard extends StatelessWidget {
@@ -22,7 +22,6 @@ class PlantBatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final crop = AppStats.cropByName(batch.plantType);
 
     return AppCard(
       onTap: onTap,
@@ -33,15 +32,7 @@ class PlantBatchCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: crop.color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(crop.icon, color: crop.color, size: 24),
-          ),
+          CropThumb(plantType: batch.plantType, size: 48),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(

@@ -13,14 +13,6 @@ dependencies:
   # Supabase
   supabase_flutter: ^2.7.0
   
-  # UI & Design
-  google_fonts: ^8.1.0
-  flutter_svg: ^2.3.0
-  
-  # Charts & Progress
-  fl_chart: ^1.2.0
-  percent_indicator: ^4.2.3
-  
   # Animations
   flutter_animate: ^4.5.2
   
@@ -30,11 +22,9 @@ dependencies:
   
   # Image handling
   image_picker: ^1.2.2
-  cached_network_image: ^3.4.1
   
-  # Camera & ML
+  # Camera (live scan viewfinder)
   camera: ^0.12.0+1
-  # tflite_flutter: ^0.10.4  # For on-device ML
   
   # Utilities
   intl: ^0.20.2
@@ -61,5 +51,14 @@ flutter:
     - assets/images/
     - .env
 
-
-# Note: Inter is provided via the `google_fonts` package; local font files removed to avoid missing asset errors.
+  # Bundled rather than fetched at runtime: google_fonts downloads from
+  # fonts.gstatic.com on first use, so a device that is offline on first launch
+  # threw an unhandled exception and fell back to the system typeface.
+  # These are the variable files, so weights come from fontVariations.
+  fonts:
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

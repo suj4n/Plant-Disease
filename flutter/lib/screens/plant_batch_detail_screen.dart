@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
-import '../core/constants/app_stats.dart';
 import '../core/navigation/app_navigator.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
 import '../core/widgets/app_card.dart';
-import '../core/widgets/page_background.dart';
+import '../core/widgets/crop_thumb.dart';
 import '../features/plant_tracker/models/plant_batch.dart';
 import '../features/plant_tracker/providers/plant_batch_provider.dart';
 import '../features/plant_tracker/widgets/batch_timeline.dart';
@@ -131,7 +130,7 @@ class _PlantBatchDetailScreenState extends State<PlantBatchDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(_batch?.name ?? 'Batch details'),
         actions: [
@@ -161,25 +160,20 @@ class _PlantBatchDetailScreenState extends State<PlantBatchDetailScreen> {
             ),
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const PageBackground(overlayOpacity: 0.72),
-          if (_loading)
-            const Center(child: CircularProgressIndicator())
-          else if (_batch == null)
-            Center(
-              child: Text('Batch not found', style: AppTextStyles.bodyLarge),
-            )
-          else
-            _buildContent(_batch!),
-        ],
-      ),
+      body: switch ((_loading, _batch)) {
+        (true, _) => const Center(child: CircularProgressIndicator()),
+        (_, null) => Center(
+            child: Text(
+              'That plant is no longer available.',
+              style: AppTextStyles.bodyLarge,
+            ),
+          ),
+        (_, final batch?) => _buildContent(batch),
+      },
     );
   }
 
   Widget _buildContent(PlantBatch batch) {
-    final crop = AppStats.cropByName(batch.plantType);
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -195,15 +189,7 @@ class _PlantBatchDetailScreenState extends State<PlantBatchDetailScreen> {
             AppCard(
               child: Row(
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: crop.color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(crop.icon, color: crop.color, size: 28),
-                  ),
+                  CropThumb(plantType: batch.plantType, size: 56),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(

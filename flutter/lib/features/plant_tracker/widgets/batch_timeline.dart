@@ -49,8 +49,8 @@ class _TimelineTile extends StatelessWidget {
   final int index;
 
   Color get _accent => switch (event.type) {
-        BatchTimelineType.planted => AppColors.emerald,
-        BatchTimelineType.scan => AppColors.indigo,
+        BatchTimelineType.planted => AppColors.success,
+        BatchTimelineType.scan => AppColors.muted,
         BatchTimelineType.reminder => AppColors.primary,
       };
 

@@ -1,11 +1,10 @@
-/// Image asset paths (under assets/images/).
+/// Bundled image asset paths.
+///
+/// Named by role, not by the screen that happens to use them today.
 abstract final class AppAssets {
-  /// Welcome screen — home_hero image.
-  static const String welcomeBg = 'assets/images/home_hero.jpg';
+  /// Terraced hillside with pickers. Welcome header band.
+  static const String fieldTerraces = 'assets/images/field_terraces.jpg';
 
-  /// Home + shared page backgrounds (all pages except scan).
-  static const String pageBg = 'assets/images/welcome_bg.jpg';
-
-  /// Scan screen only.
-  static const String scanBg = 'assets/images/bg.jpg';
+  /// Backlit foliage. Home greeting band.
+  static const String fieldFoliage = 'assets/images/field_foliage.jpg';
 }

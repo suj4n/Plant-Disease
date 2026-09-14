@@ -1,77 +1,56 @@
 import 'package:flutter/material.dart';
-import '../navigation/app_navigator.dart';
 import '../theme/app_spacing.dart';
-import 'bottom_nav.dart';
 
-/// Tab shell: scrollable body + optional bottom navigation.
+/// Body wrapper for a tab inside [MainShell].
+///
+/// The shell now owns the Scaffold and the bottom navigation, so this is just
+/// a safe-area scroll surface with the right bottom clearance for the floating
+/// nav bar.
 class AppShell extends StatelessWidget {
-  const AppShell({
-    super.key,
-    required this.body,
-    required this.navIndex,
-    this.appBar,
-    this.background,
-    this.bottomPadding = 88,
-  });
+  const AppShell({super.key, required this.body, this.onRefresh});
 
   final Widget body;
-  final int navIndex;
-  final PreferredSizeWidget? appBar;
-  final Widget? background;
-  final double bottomPadding;
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    final hasUnderlap = background != null && appBar != null;
-    final topInset = hasUnderlap
-        ? MediaQuery.paddingOf(context).top + appBar!.preferredSize.height
-        : 0.0;
-
-    return Scaffold(
-      appBar: appBar,
-      extendBodyBehindAppBar: background != null,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (background != null) background!,
-          Padding(
-            padding: EdgeInsets.only(top: topInset),
-            child: body,
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: PlantDocBottomNav(
-              currentIndex: navIndex,
-              onTap: (i) => AppNavigator.goToTab(context, i, currentIndex: navIndex),
-              onScanTap: () => AppNavigator.goToScan(context),
-            ),
-          ),
-        ],
-      ),
-    );
+    final content = SafeArea(bottom: false, child: body);
+    if (onRefresh == null) return content;
+    return RefreshIndicator(onRefresh: onRefresh!, child: content);
   }
 }
 
+/// Scrolling column with screen padding and clearance for the floating nav.
 class AppScrollBody extends StatelessWidget {
   const AppScrollBody({
     super.key,
     required this.children,
-    this.bottomPadding = 88,
+    this.bottomPadding,
+    this.controller,
   });
 
   final List<Widget> children;
-  final double bottomPadding;
+
+  /// Defaults to the floating nav bar's height plus the device's bottom inset.
+  final double? bottomPadding;
+
+  final ScrollController? controller;
+
+  /// Clearance the floating bottom navigation needs on this device.
+  static double navClearance(BuildContext context) =>
+      AppSpacing.bottomNavClearance + MediaQuery.paddingOf(context).bottom;
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      controller: controller,
+      // Always scrollable so pull-to-refresh works even on a short screen.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         AppSpacing.md,
         AppSpacing.md,
         AppSpacing.md,
-        bottomPadding,
+        bottomPadding ?? navClearance(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

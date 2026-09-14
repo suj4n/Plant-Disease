@@ -1,23 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../core/providers/auth_provider.dart';
+
 import '../core/navigation/app_navigator.dart';
+import '../core/providers/auth_provider.dart';
 import '../core/services/scan_storage.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
+import '../core/utils/formatting.dart';
 import '../core/widgets/app_card.dart';
 import '../core/widgets/app_icon_button.dart';
 import '../core/widgets/app_shell.dart';
-import '../core/widgets/page_background.dart';
+import '../core/constants/app_assets.dart';
+import '../core/widgets/crop_strip.dart';
+import '../core/widgets/photo_band.dart';
 import '../core/widgets/scan_activity_tile.dart';
 import '../core/widgets/section_header.dart';
+import '../core/widgets/state_views.dart';
+import '../data/models/detection_result.dart';
 import '../features/plant_tracker/models/plant_batch.dart';
 import '../features/plant_tracker/providers/plant_batch_provider.dart';
 import '../features/plant_tracker/widgets/create_batch_sheet.dart';
 import '../features/plant_tracker/widgets/home_batch_tile.dart';
 import 'plant_batch_detail_screen.dart';
 
+/// Home answers three questions at a glance: who you are, how your plants are,
+/// and how to scan. Every section degrades to an empty state, so the screen is
+/// complete with no history, no plants and no network.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -26,21 +35,42 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Map<String, dynamic>> _recentScans = [];
+  List<Map<String, dynamic>> _recentScans = const [];
+  ViewStatus _scansStatus = ViewStatus.loading;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadScans();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PlantBatchProvider>().loadBatches();
+      if (mounted) context.read<PlantBatchProvider>().loadBatches();
     });
   }
 
-  Future<void> _loadData() async {
-    final all = await ScanStorage.getAll();
+  Future<void> _loadScans() async {
+    if (mounted && _scansStatus != ViewStatus.loading) {
+      setState(() => _scansStatus = ViewStatus.loading);
+    }
+    // ScanStorage is local-first, so this succeeds offline.
+    final recent = await ScanStorage.getRecent(3);
     if (!mounted) return;
-    setState(() => _recentScans = all.take(3).toList());
+    setState(() {
+      _recentScans = recent;
+      _scansStatus = recent.isEmpty ? ViewStatus.empty : ViewStatus.ready;
+    });
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      _loadScans(),
+      context.read<PlantBatchProvider>().loadBatches(),
+    ]);
+  }
+
+  void _openScan() {
+    AppNavigator.goToScan(context).then((_) {
+      if (mounted) _loadScans();
+    });
   }
 
   void _openBatchDetail(String batchId) {
@@ -67,96 +97,173 @@ class _HomeScreenState extends State<HomeScreen> {
     _openBatchDetail(batch.id);
   }
 
-  String _formatTimeAgo(String? timestamp) {
-    if (timestamp == null || timestamp.isEmpty) return 'Unknown';
-    try {
-      final diff = DateTime.now().difference(DateTime.parse(timestamp));
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
-    } catch (_) {
-      return 'Unknown';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AppShell(
-      navIndex: 0,
-      background: const HeroBackground(fullScreen: true),
-      body: SafeArea(
-        child: AppScrollBody(
-          children: [
-            _HomeHeader(),
-            const SectionGap(size: AppSpacing.lg),
-            const _WelcomeBlock(),
-            const SectionGap(),
-            _HomeBatchesSection(
-              onBatchTap: _openBatchDetail,
-              onAddBatch: _createBatch,
-              onViewAll: () => AppNavigator.goToTab(context, 2, currentIndex: 0),
-            ),
-            const SectionGap(),
-            _RecentActivitySection(
-              scans: _recentScans,
-              formatTimeAgo: _formatTimeAgo,
-            ),
-          ],
-        ),
+      onRefresh: _refresh,
+      body: AppScrollBody(
+        children: [
+          const _HomeHeader(),
+          const SizedBox(height: AppSpacing.lg),
+          _ScanCallout(onScan: _openScan),
+          const SizedBox(height: AppSpacing.xl),
+          _PlantBatchesSection(
+            onBatchTap: _openBatchDetail,
+            onAddBatch: _createBatch,
+            onViewAll: () =>
+                AppNavigator.goToTab(context, AppNavigator.plantsTab),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          _RecentDiagnosesSection(
+            status: _scansStatus,
+            scans: _recentScans,
+            onScan: _openScan,
+            onViewAll: () =>
+                AppNavigator.goToTab(context, AppNavigator.historyTab),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
+
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-    final fullName = authProvider.userProfile?['full_name'] as String? ?? 'PlantDoc User';
-    final firstName = fullName.split(' ').first;
+    final profile = context.watch<AuthProvider>().userProfile;
+    final name = firstNameOrNull(profile?['full_name'] as String?);
+    final avatarUrl = profile?['avatar_url'] as String?;
 
-    return Row(
-      children: [
-        const AppIconButton(icon: Icons.person_outline),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Good morning', style: AppTextStyles.bodySmall),
-              Text(firstName, style: AppTextStyles.headlineSmall),
-            ],
+    // A signed-out user has no name, and "Good evening, there" reads oddly.
+    final greeting = name == null
+        ? greetingFor(DateTime.now())
+        : '${greetingFor(DateTime.now())}, $name';
+
+    return PhotoBand(
+      image: AppAssets.fieldFoliage,
+      height: 116,
+      child: Row(
+        children: [
+          // Avatar and bell keep solid fills: interactive controls do not sit
+          // directly on photography.
+          _Avatar(url: avatarUrl, initial: name ?? 'P'),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  greeting,
+                  style: AppTextStyles.titleLarge
+                      .copyWith(color: AppColors.onPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Let's keep your plants healthy.",
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.onPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
-        ),
-        const AppIconButton(icon: Icons.notifications_outlined),
-      ],
+          const SizedBox(width: AppSpacing.xs),
+          AppIconButton(
+            icon: Icons.notifications_none_rounded,
+            semanticLabel: 'Reminders',
+            onTap: () => AppNavigator.goToTab(context, AppNavigator.plantsTab),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _WelcomeBlock extends StatelessWidget {
-  const _WelcomeBlock();
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.url, required this.initial});
+
+  final String? url;
+  final String initial;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'How are your',
-          style: AppTextStyles.headlineLarge.copyWith(
-            fontWeight: FontWeight.w400,
-            color: AppColors.foregroundSecondary,
-          ),
-        ),
-        Text('crops today?', style: AppTextStyles.displayMedium),
-      ],
+    // The home screen must work with no profile image, so the initial is the
+    // default rather than a fallback nobody designed.
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: AppColors.cardElevated,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border),
+        image: (url != null && url!.isNotEmpty)
+            ? DecorationImage(image: NetworkImage(url!), fit: BoxFit.cover)
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: (url == null || url!.isEmpty)
+          ? Text(
+              initial.characters.first.toUpperCase(),
+              style: AppTextStyles.titleLarge.copyWith(
+                color: AppColors.muted,
+              ),
+            )
+          : null,
     );
   }
 }
 
-class _HomeBatchesSection extends StatelessWidget {
-  const _HomeBatchesSection({
+/// The screen's one primary action.
+///
+/// This replaced a full-bleed stock photo *and* a separate "scan now" card —
+/// two blocks competing to say the same thing, with a decorative photograph
+/// carrying none of the message. Type and one button say it in a third of the
+/// height.
+class _ScanCallout extends StatelessWidget {
+  const _ScanCallout({required this.onScan});
+
+  final VoidCallback onScan;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Healthy plants start with early detection.',
+            style: AppTextStyles.headlineMedium,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Photograph one affected leaf and PlantDoc AI will suggest what '
+            'to look for.',
+            style: AppTextStyles.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onScan,
+              icon: const Icon(Icons.center_focus_strong_rounded, size: 19),
+              label: const Text('Scan a plant'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlantBatchesSection extends StatelessWidget {
+  const _PlantBatchesSection({
     required this.onBatchTap,
     required this.onAddBatch,
     required this.onViewAll,
@@ -168,74 +275,36 @@ class _HomeBatchesSection extends StatelessWidget {
 
   static const _slotCount = 4;
 
-  List<PlantBatch> _batchesForGrid(List<PlantBatch> all) {
-    final sorted = List<PlantBatch>.from(all)
-      ..sort((a, b) => a.nextReminderDate.compareTo(b.nextReminderDate));
-    return sorted.take(_slotCount).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Consumer<PlantBatchProvider>(
       builder: (context, provider, _) {
-        final batches = _batchesForGrid(provider.batches);
-        final showAddSlots = batches.length < _slotCount;
+        final sorted = List<PlantBatch>.from(provider.batches)
+          ..sort((a, b) => a.nextReminderDate.compareTo(b.nextReminderDate));
+        final batches = sorted.take(_slotCount).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader(
-              title: 'Your plant batches',
+              title: 'Your plants',
               actionLabel: provider.isEmpty ? null : 'View all',
               onAction: provider.isEmpty ? null : onViewAll,
             ),
             const SizedBox(height: AppSpacing.sm),
             if (provider.loading)
-              const SizedBox(
-                height: 160,
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const LoadingState(rows: 2, rowHeight: 100)
             else if (provider.isEmpty)
-              AppCard(
-                onTap: onAddBatch,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.eco_outlined,
-                        color: AppColors.primary,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'No batches yet',
-                            style: AppTextStyles.titleLarge,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Track plantings and get scan reminders every 2 weeks.',
-                            style: AppTextStyles.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.add_circle_outline,
-                      color: AppColors.primary,
-                    ),
-                  ],
-                ),
+              EmptyState(
+                icon: Icons.local_florist_outlined,
+                title: 'No plants yet',
+                message:
+                    'Add your first planting to track its progress and get '
+                    'a scan reminder every two weeks.',
+                actionLabel: 'Add a plant',
+                onAction: onAddBatch,
+                compact: true,
+                footer: const CropStrip(thumbSize: 44),
               )
             else
               GridView.count(
@@ -251,9 +320,8 @@ class _HomeBatchesSection extends StatelessWidget {
                       batch: batch,
                       onTap: () => onBatchTap(batch.id),
                     ),
-                  if (showAddSlots)
-                    for (var i = 0; i < _slotCount - batches.length; i++)
-                      HomeAddBatchTile(onTap: onAddBatch),
+                  if (batches.length < _slotCount)
+                    HomeAddBatchTile(onTap: onAddBatch),
                 ],
               ),
           ],
@@ -263,48 +331,60 @@ class _HomeBatchesSection extends StatelessWidget {
   }
 }
 
-class _RecentActivitySection extends StatelessWidget {
-  const _RecentActivitySection({
+class _RecentDiagnosesSection extends StatelessWidget {
+  const _RecentDiagnosesSection({
+    required this.status,
     required this.scans,
-    required this.formatTimeAgo,
+    required this.onScan,
+    required this.onViewAll,
   });
 
+  final ViewStatus status;
   final List<Map<String, dynamic>> scans;
-  final String Function(String?) formatTimeAgo;
+  final VoidCallback onScan;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(title: 'Recent activity'),
+        SectionHeader(
+          title: 'Recent diagnoses',
+          actionLabel: scans.isEmpty ? null : 'View all',
+          onAction: scans.isEmpty ? null : onViewAll,
+        ),
         const SizedBox(height: AppSpacing.sm),
-        if (scans.isEmpty)
-          AppCard(
-            child: Row(
+        switch (status) {
+          ViewStatus.loading => const LoadingState(rows: 2),
+          ViewStatus.empty || ViewStatus.error => EmptyState(
+              icon: Icons.center_focus_weak_rounded,
+              title: 'No scans yet',
+              message:
+                  'Scan your first plant to start building your plant health '
+                  'history.',
+              actionLabel: 'Scan a plant',
+              onAction: onScan,
+              compact: true,
+            ),
+          ViewStatus.ready => Column(
               children: [
-                Icon(Icons.eco_outlined, color: AppColors.primary, size: 28),
-                SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'No scans yet. Tap Scan to diagnose a plant.',
-                    style: AppTextStyles.bodyMedium,
+                for (final scan in scans)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                    child: ScanActivityTile(
+                      title: scan['disease']?.toString() ?? 'Unknown',
+                      plant: scan['plant']?.toString(),
+                      subtitle: formatRelativeTimestamp(scan['timestamp']),
+                      confidence: confidencePercentOf(scan['confidence']),
+                      isHealthy: scan['isHealthy'] == true,
+                      isIdentifiable: scan['isIdentifiable'] as bool? ?? true,
+                      imagePath: scan['imagePath'] as String?,
+                    ),
                   ),
-                ),
               ],
             ),
-          )
-        else
-          ...scans.map((scan) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: ScanActivityTile(
-                title: scan['disease'] as String? ?? 'Unknown',
-                subtitle: formatTimeAgo(scan['timestamp'] as String?),
-                confidence: scan['confidence'] as int? ?? 0,
-                isHealthy: scan['isHealthy'] as bool? ?? false,
-              ),
-            );
-          }),
+        },
       ],
     );
   }

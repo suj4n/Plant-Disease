@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_stats.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/crop_thumb.dart';
 
 /// Bottom sheet to create or edit a plant batch.
 class CreateBatchSheet extends StatefulWidget {
@@ -148,24 +150,24 @@ class _CreateBatchSheetState extends State<CreateBatchSheet> {
             const SizedBox(height: AppSpacing.sm),
             Text('Plant type', style: AppTextStyles.labelMedium),
             const SizedBox(height: AppSpacing.xs),
-            Wrap(
-              spacing: AppSpacing.xs,
-              runSpacing: AppSpacing.xs,
-              children: AppStats.supportedCrops.map((crop) {
-                final selected = _plantType == crop;
-                return FilterChip(
-                  label: Text(crop),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _plantType = crop),
-                  selectedColor: AppColors.primary,
-                  checkmarkColor: AppColors.onPrimary,
-                  labelStyle: AppTextStyles.chipText.copyWith(
-                    color: selected
-                        ? AppColors.onPrimary
-                        : AppColors.mutedForeground,
+            Row(
+              children: [
+                for (final crop in AppStats.supportedCrops)
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        right: crop == AppStats.supportedCrops.last
+                            ? 0
+                            : AppSpacing.xs,
+                      ),
+                      child: _CropOption(
+                        name: crop,
+                        selected: _plantType == crop,
+                        onTap: () => setState(() => _plantType = crop),
+                      ),
+                    ),
                   ),
-                );
-              }).toList(),
+              ],
             ),
             const SizedBox(height: AppSpacing.sm),
             InkWell(
@@ -195,6 +197,61 @@ class _CreateBatchSheetState extends State<CreateBatchSheet> {
               child: const Text('Cancel'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Picking a crop from a photograph is faster than reading four chips, and it
+/// is the only place colour enters this sheet.
+class _CropOption extends StatelessWidget {
+  const _CropOption({
+    required this.name,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String name;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: name,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.softGreen : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              CropThumb(plantType: name, size: 44),
+              const SizedBox(height: 6),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  style: AppTextStyles.labelSmall.copyWith(
+                    color: selected ? AppColors.primaryDark : AppColors.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

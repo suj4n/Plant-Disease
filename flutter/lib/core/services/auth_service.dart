@@ -4,8 +4,6 @@ import 'supabase_service.dart';
 /// Authentication service for PlantDoc
 /// Handles login, registration, and auth state management
 class AuthService {
-  static const String _tokenKey = 'plantdoc_auth_token';
-  
   /// Listen to authentication state changes
   static Stream<AuthState> get onAuthStateChanged {
     return SupabaseService.client.auth.onAuthStateChange;

@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.models import load_model
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import InferenceError
+from app.core.exceptions import InferenceError, ModelUnavailableError
 from app.data.disease_metadata import build_metadata_for_label
 from app.schemas.detection import PredictionResult
 
@@ -38,6 +40,14 @@ class DiseaseDetectionService:
     def is_loaded(self) -> bool:
         return self._model is not None
 
+    @property
+    def class_count(self) -> int:
+        return len(self._class_names)
+
+    @property
+    def model_version(self) -> str:
+        return self.settings.model_version
+
     def load(self) -> None:
         model_path = self.settings.model_path
         if not model_path.exists():
@@ -56,23 +66,28 @@ class DiseaseDetectionService:
 
     def preprocess(self, image_rgb: np.ndarray) -> np.ndarray:
         """Resize to 224x224 and apply MobileNetV2 preprocessing."""
-        import cv2
-
         size = self.settings.model_input_size
         resized = cv2.resize(image_rgb, (size, size), interpolation=cv2.INTER_AREA)
         batch = np.expand_dims(resized.astype(np.float32), axis=0)
         return preprocess_input(batch)
 
-    def predict(self, image_rgb: np.ndarray, top_k: int = 5) -> tuple[PredictionResult, list[TopPrediction]]:
+    def predict(
+        self,
+        image_rgb: np.ndarray,
+        top_k: int = 5,
+    ) -> tuple[PredictionResult, list[TopPrediction], int]:
+        """Run inference. Returns (best, top-k, elapsed milliseconds)."""
         if self._model is None:
-            raise InferenceError("Model is not loaded")
+            raise ModelUnavailableError()
 
+        started = time.perf_counter()
         batch = self.preprocess(image_rgb)
         try:
             probs = self._model.predict(batch, verbose=0)[0]
         except Exception as exc:
             logger.exception("Inference failed")
             raise InferenceError(str(exc)) from exc
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
 
         top_indices = np.argsort(probs)[::-1][:top_k]
         tops: list[TopPrediction] = []
@@ -95,12 +110,16 @@ class DiseaseDetectionService:
             confidence=round(best.confidence, 4),
             plant=meta["plant"],
             description=meta["description"],
+            symptoms=meta.get("symptoms", []),
             treatment=meta["treatment"],
             prevention=meta["prevention"],
             is_healthy=meta.get("is_healthy", False),
+            is_identifiable=meta.get("is_identifiable", True),
+            risk_level=meta.get("risk_level", "medium"),
+            scientific_name=meta.get("scientific_name") or None,
             class_label=best.class_label,
         )
-        return result, tops
+        return result, tops, elapsed_ms
 
     def to_legacy_response(
         self,

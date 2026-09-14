@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Main Supabase service for PlantDoc Flutter app
@@ -363,7 +363,7 @@ class SupabaseService {
 
       return _client.storage.from('scan-images').getPublicUrl(path);
     } catch (e) {
-      print('Image upload failed: $e');
+      debugPrint('Image upload failed: $e');
       return null;
     }
   }

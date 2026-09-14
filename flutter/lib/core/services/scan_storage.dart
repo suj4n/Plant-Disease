@@ -1,205 +1,197 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/detection_result.dart';
 import 'scan_history_service.dart';
 import 'supabase_service.dart';
 
-/// Scan history: device cache for guests, Supabase for signed-in users.
+/// Scan history, local-first.
+///
+/// Previously this routed signed-in users straight to Supabase and returned an
+/// empty list whenever that failed — so a logged-in user with no network saw an
+/// empty home screen and lost every scan they took offline.
+///
+/// Now every scan is written locally first and mirrored to the cloud on a best
+/// effort basis. Cloud reads refresh the local cache, and any cloud failure
+/// falls back to that cache instead of to nothing.
 class ScanStorage {
   ScanStorage._();
 
-  static const String _guestKey = 'scan_history';
+  static const String _cacheKey = 'scan_history';
+  static const int _maxCached = 200;
 
   static bool get _useCloud => SupabaseService.isAuthenticated;
 
+  // --- Reads ------------------------------------------------------------
+
   static Future<List<Map<String, dynamic>>> getAll() async {
-    if (_useCloud) {
-      try {
-        final rows = await SupabaseService.getScanHistory(limit: 200);
-        return rows.map(_fromCloud).toList();
-      } catch (_) {
-        return [];
-      }
+    if (!_useCloud) return _readCache();
+
+    try {
+      final rows = await SupabaseService.getScanHistory(limit: _maxCached);
+      final scans = rows.map(_fromCloud).toList();
+      await _writeCache(scans);
+      return scans;
+    } catch (e) {
+      // Offline or Supabase is down. The cache is the whole point.
+      debugPrint('ScanStorage: cloud read failed, using local cache ($e)');
+      return _readCache();
     }
-    return _getAllGuest();
   }
 
-  static Future<void> save(Map<String, dynamic> scanData) async {
-    if (_useCloud) {
-      await _saveCloud(scanData);
-      return;
-    }
-    await _saveGuest(scanData);
-  }
-
-  static Future<Map<String, int>> getStats() async {
+  static Future<List<Map<String, dynamic>>> getRecent(int count) async {
     final all = await getAll();
-    final healthy = all.where((s) => s['isHealthy'] == true).length;
-    return {
-      'total': all.length,
-      'healthy': healthy,
-      'diseased': all.length - healthy,
-    };
+    return all.take(count).toList();
   }
 
-  /// Moves guest-only scans to the signed-in account, then clears local cache.
+  // --- Writes -----------------------------------------------------------
+
+  /// Saves a scan. The local write always happens; the cloud mirror is best
+  /// effort, so losing the network never loses the scan.
+  static Future<void> save(Map<String, dynamic> scanData) async {
+    final entry = _normalizeEntry(scanData);
+    await _appendToCache(entry);
+
+    if (!_useCloud) return;
+    try {
+      await _saveCloud(scanData);
+    } catch (e) {
+      debugPrint('ScanStorage: cloud save failed, kept locally ($e)');
+    }
+  }
+
+  static Future<void> saveResult(DetectionResult result) =>
+      save(result.toStorageJson());
+
+  /// Copies guest-only scans into the signed-in account after login.
   static Future<void> migrateGuestDataToCloud() async {
     if (!_useCloud) return;
 
-    final guestScans = await _getAllGuest();
-    for (final scan in guestScans) {
+    for (final scan in await _readCache()) {
       try {
-        await _saveCloud({
-          'disease': scan['disease'],
-          'confidence': scan['confidence'],
-          'isHealthy': scan['isHealthy'],
-          'recommendations': <String>[],
-          'timestamp': scan['timestamp'],
-        });
-      } catch (_) {}
+        await _saveCloud(scan);
+      } catch (_) {
+        // Best effort; the scan stays in the local cache either way.
+      }
     }
-    await clearGuestCache();
   }
 
   static Future<void> clearGuestCache() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_guestKey);
+    await prefs.remove(_cacheKey);
   }
 
   static Future<void> clearAll() async {
-    if (_useCloud) {
-      try {
-        final scans = await SupabaseService.getScanHistory(limit: 500);
-        for (final scan in scans) {
-          final id = scan['id']?.toString();
-          if (id != null) {
-            await SupabaseService.deleteScan(id);
-          }
-        }
-      } catch (_) {}
-      return;
-    }
     await clearGuestCache();
-  }
-
-  static const List<String> weekdayLabels = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
-
-  /// Scan counts for each day of the current week (Monday–Sunday).
-  static List<int> scanCountsForCurrentWeek(List<Map<String, dynamic>> scans) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: now.weekday - 1));
-
-    final counts = List<int>.filled(7, 0);
-    for (final scan in scans) {
-      final raw = scan['timestamp'];
-      if (raw == null) continue;
-      try {
-        final dt = DateTime.parse(raw.toString());
-        final day = DateTime(dt.year, dt.month, dt.day);
-        final index = day.difference(monday).inDays;
-        if (index >= 0 && index < 7) counts[index]++;
-      } catch (_) {}
+    if (!_useCloud) return;
+    try {
+      final scans = await SupabaseService.getScanHistory(limit: 500);
+      await Future.wait(
+        scans
+            .map((s) => s['id']?.toString())
+            .whereType<String>()
+            .map(SupabaseService.deleteScan),
+      );
+    } catch (e) {
+      debugPrint('ScanStorage: cloud clear failed ($e)');
     }
-    return counts;
   }
 
-  static Future<List<Map<String, dynamic>>> _getAllGuest() async {
+  // --- Local cache ------------------------------------------------------
+
+  static Future<List<Map<String, dynamic>>> _readCache() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_guestKey) ?? [];
-    return raw
-        .map((e) => jsonDecode(e) as Map<String, dynamic>)
-        .toList()
-        .reversed
-        .toList();
+    final raw = prefs.getStringList(_cacheKey) ?? const [];
+    final scans = <Map<String, dynamic>>[];
+    for (final line in raw) {
+      try {
+        final decoded = jsonDecode(line);
+        if (decoded is Map) scans.add(Map<String, dynamic>.from(decoded));
+      } catch (_) {
+        // Skip a corrupt row rather than losing the whole history.
+      }
+    }
+    return scans.reversed.toList();
   }
 
-  static Future<void> _saveGuest(Map<String, dynamic> scanData) async {
+  static Future<void> _writeCache(List<Map<String, dynamic>> scans) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_guestKey) ?? [];
-    final entry = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'disease': scanData['disease'] ?? 'Unknown',
-      'confidence': _normalizeConf(scanData['confidence']),
-      'isHealthy': scanData['isHealthy'] ?? false,
-      'imagePath': scanData['imagePath'],
-      'timestamp':
-          scanData['timestamp'] ?? DateTime.now().toIso8601String(),
-    };
+    // Stored oldest-first; _readCache reverses to newest-first.
+    final ordered = scans.reversed.take(_maxCached).toList();
+    await prefs.setStringList(
+      _cacheKey,
+      ordered.map(jsonEncode).toList(),
+    );
+  }
+
+  static Future<void> _appendToCache(Map<String, dynamic> entry) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = List<String>.from(prefs.getStringList(_cacheKey) ?? const []);
     raw.add(jsonEncode(entry));
-    await prefs.setStringList(_guestKey, raw);
+    if (raw.length > _maxCached) {
+      raw.removeRange(0, raw.length - _maxCached);
+    }
+    await prefs.setStringList(_cacheKey, raw);
   }
+
+  // --- Shape conversion -------------------------------------------------
+
+  static Map<String, dynamic> _normalizeEntry(Map<String, dynamic> scan) => {
+        'id': scan['id']?.toString() ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
+        'disease': scan['disease']?.toString() ?? 'Unknown',
+        'plant': scan['plant']?.toString() ?? '',
+        'confidence': parseConfidenceFraction(scan['confidence']),
+        'isHealthy': scan['isHealthy'] == true,
+        'isIdentifiable': scan['isIdentifiable'] as bool? ?? true,
+        'riskLevel': scan['riskLevel']?.toString() ?? 'medium',
+        'imagePath': scan['imagePath'],
+        'timestamp': scan['timestamp']?.toString() ??
+            DateTime.now().toIso8601String(),
+      };
+
+  static Map<String, dynamic> _fromCloud(Map<String, dynamic> scan) => {
+        'id': scan['id']?.toString(),
+        'disease': scan['disease_name']?.toString() ?? 'Unknown',
+        'plant': scan['plant_name']?.toString() ?? '',
+        'confidence': parseConfidenceFraction(scan['confidence']),
+        'isHealthy': scan['is_healthy'] == true,
+        'isIdentifiable': true,
+        'riskLevel': scan['risk_level']?.toString() ?? 'medium',
+        'imagePath': scan['image_url'],
+        'timestamp': scan['created_at']?.toString(),
+      };
 
   static Future<void> _saveCloud(Map<String, dynamic> scanData) async {
-    final disease = scanData['disease']?.toString() ?? 'Unknown';
-    final confidence = _confidenceAsFraction(scanData['confidence']);
-    final isHealthy = scanData['isHealthy'] as bool? ?? false;
-    final recommendations = _recommendationsText(scanData['recommendations']);
-
     File? imageFile;
     final imagePath = scanData['imagePath'] as String?;
-    if (imagePath != null && imagePath.isNotEmpty) {
+    // A cloud URL from a previous sync is not a local file to re-upload.
+    if (imagePath != null &&
+        imagePath.isNotEmpty &&
+        !imagePath.startsWith('http')) {
       final file = File(imagePath);
       if (file.existsSync()) imageFile = file;
     }
 
     await ScanHistoryService.saveScan(
-      diseaseName: disease,
-      confidence: confidence,
-      isHealthy: isHealthy,
-      recommendations: recommendations,
+      diseaseName: scanData['disease']?.toString() ?? 'Unknown',
+      confidence: parseConfidenceFraction(scanData['confidence']),
+      isHealthy: scanData['isHealthy'] == true,
+      recommendations: _recommendationsText(scanData),
       imageFile: imageFile,
     );
   }
 
-  static Map<String, dynamic> _fromCloud(Map<String, dynamic> scan) {
-    return {
-      'id': scan['id']?.toString(),
-      'disease': scan['disease_name'] ?? 'Unknown',
-      'confidence': _normalizeConf(scan['confidence']),
-      'isHealthy': scan['is_healthy'] == true,
-      'imagePath': scan['image_url'],
-      'timestamp': scan['created_at']?.toString(),
-    };
-  }
-
-  static String _recommendationsText(dynamic raw) {
-    if (raw is List) {
-      return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).join('\n');
+  static String _recommendationsText(Map<String, dynamic> scan) {
+    final parts = <String>[];
+    for (final key in ['treatment', 'prevention', 'recommendations']) {
+      final raw = scan[key];
+      if (raw is List) parts.addAll(raw.map((e) => e.toString()));
+      if (raw is String && raw.isNotEmpty) parts.add(raw);
     }
-    if (raw is String) return raw;
-    return '';
-  }
-
-  static double _confidenceAsFraction(dynamic raw) {
-    if (raw == null) return 0;
-    if (raw is num) {
-      final v = raw.toDouble();
-      return v > 1.0 ? (v / 100).clamp(0, 1) : v.clamp(0, 1);
-    }
-    if (raw is String) {
-      final parsed = double.tryParse(raw);
-      if (parsed == null) return 0;
-      return parsed > 1.0 ? (parsed / 100).clamp(0, 1) : parsed.clamp(0, 1);
-    }
-    return 0;
-  }
-
-  static int _normalizeConf(dynamic raw) {
-    if (raw == null) return 0;
-    if (raw is double) return raw <= 1.0 ? (raw * 100).round() : raw.round();
-    if (raw is int) return raw > 1 ? raw : (raw * 100).round();
-    if (raw is String) return int.tryParse(raw) ?? 0;
-    return 0;
+    return parts.where((s) => s.isNotEmpty).join('\n');
   }
 }

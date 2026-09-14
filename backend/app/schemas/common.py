@@ -1,19 +1,4 @@
-from typing import Any, Generic, TypeVar
-
-from pydantic import BaseModel, Field
-
-T = TypeVar("T")
-
-
-class APIResponse(BaseModel, Generic[T]):
-    success: bool = True
-    message: str | None = None
-    data: T | None = None
-
-
-class ErrorResponse(BaseModel):
-    success: bool = False
-    message: str
+from pydantic import BaseModel
 
 
 class MessageResponse(BaseModel):
@@ -21,15 +6,12 @@ class MessageResponse(BaseModel):
     message: str | None = None
 
 
-class TokenPair(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class PaginatedMeta(BaseModel):
-    total: int
-
-
 class HealthResponse(BaseModel):
     status: str = "healthy"
+    model_loaded: bool = False
+    model_version: str | None = None
+    classes: int = 0
+    database: str = "unknown"
+
+    # ``model_`` is a protected prefix in pydantic v2 namespaces.
+    model_config = {"protected_namespaces": ()}
