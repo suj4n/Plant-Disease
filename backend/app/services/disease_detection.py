@@ -9,7 +9,6 @@ from typing import Any
 
 import cv2
 import numpy as np
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.models import load_model
 
 from app.core.config import Settings, get_settings
@@ -65,11 +64,16 @@ class DiseaseDetectionService:
         logger.info("Model loaded. Classes: %d", len(self._class_names))
 
     def preprocess(self, image_rgb: np.ndarray) -> np.ndarray:
-        """Resize to 224x224 and apply MobileNetV2 preprocessing."""
+        """Resize to 224x224. Scaling happens inside the model.
+
+        The v3 model carries its own `Rescaling` layer, so it takes raw RGB in
+        [0, 255]. Applying `mobilenet_v2.preprocess_input` here as well would
+        scale twice and produce confident nonsense with no error raised.
+        INTER_LINEAR matches the bilinear resize used during training.
+        """
         size = self.settings.model_input_size
-        resized = cv2.resize(image_rgb, (size, size), interpolation=cv2.INTER_AREA)
-        batch = np.expand_dims(resized.astype(np.float32), axis=0)
-        return preprocess_input(batch)
+        resized = cv2.resize(image_rgb, (size, size), interpolation=cv2.INTER_LINEAR)
+        return np.expand_dims(resized.astype(np.float32), axis=0)
 
     def predict(
         self,

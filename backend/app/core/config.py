@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
 
     model_input_size: int = 224
-    model_version: str = "mobilenetv2-20c-v1"
+    model_version: str = "mobilenetv2-20c-v3"
 
     @property
     def allow_credentials(self) -> bool:

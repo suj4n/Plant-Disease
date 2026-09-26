@@ -24,6 +24,9 @@ flutter/android/.gradle/
 flutter/android/.kotlin/
 flutter/android/local.properties
 
+# Local working docs / notebooks — not published to GitHub
+docs/
+
 # IDE / OS
 .idea/
 .DS_Store
