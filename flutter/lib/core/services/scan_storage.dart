@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/detection_result.dart';
-import 'scan_history_service.dart';
 import 'supabase_service.dart';
 
 /// Scan history, local-first.
@@ -166,23 +165,35 @@ class ScanStorage {
       };
 
   static Future<void> _saveCloud(Map<String, dynamic> scanData) async {
-    File? imageFile;
+    String? imageUrl;
     final imagePath = scanData['imagePath'] as String?;
     // A cloud URL from a previous sync is not a local file to re-upload.
     if (imagePath != null &&
         imagePath.isNotEmpty &&
         !imagePath.startsWith('http')) {
       final file = File(imagePath);
-      if (file.existsSync()) imageFile = file;
+      if (file.existsSync()) imageUrl = await _uploadImage(file);
     }
 
-    await ScanHistoryService.saveScan(
+    await SupabaseService.saveScan(
       diseaseName: scanData['disease']?.toString() ?? 'Unknown',
       confidence: parseConfidenceFraction(scanData['confidence']),
       isHealthy: scanData['isHealthy'] == true,
       recommendations: _recommendationsText(scanData),
-      imageFile: imageFile,
+      imageUrl: imageUrl,
     );
+  }
+
+  /// Null on failure — a scan is still worth saving without its photo.
+  static Future<String?> _uploadImage(File file) async {
+    try {
+      return await SupabaseService.uploadScanImage(
+        imageBytes: await file.readAsBytes(),
+        fileName: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _recommendationsText(Map<String, dynamic> scan) {

@@ -25,10 +25,6 @@ class AppColors {
   /// generic decoration it stops reading as meaningful.
   static const Color softGreen = Color(0xFFDCE8D5);
 
-  /// Hairline border. (Named `glassBorder` from the frosted-surface era; the
-  /// surfaces are flat now but ~20 call sites still use this name.)
-  static const Color glassBorder = Color(0xFFC9D4C2);
-
   // --- Brand ------------------------------------------------------------
   /// The single accent. The reference sage (#8EAD82) is 2.2:1 against white and
   /// could not carry the white button label it was meant for; this reaches

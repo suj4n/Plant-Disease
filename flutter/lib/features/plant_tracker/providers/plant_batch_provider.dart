@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/plant_batch.dart';
 import '../services/plant_batch_database.dart';
@@ -14,7 +13,6 @@ class PlantBatchProvider extends ChangeNotifier {
 
   final PlantBatchDatabase _database;
   final PlantReminderService _reminderService;
-  final _uuid = const Uuid();
 
   List<PlantBatch> _batches = [];
   bool _loading = true;
@@ -55,7 +53,8 @@ class PlantBatchProvider extends ChangeNotifier {
   }) async {
     final now = DateTime.now();
     final batch = PlantBatch(
-      id: _uuid.v4(),
+      // ponytail: microsecond id; collides only if two batches are created in the same microsecond.
+      id: now.microsecondsSinceEpoch.toString(),
       name: name.trim(),
       plantType: plantType.trim(),
       plantedDate: plantedDate,

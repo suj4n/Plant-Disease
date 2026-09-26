@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
-import 'glass_surface.dart';
+import 'app_card.dart';
 
 /// Circular icon affordance. 44dp square so it always clears the touch minimum,
 /// and it requires a [semanticLabel] because an icon alone tells a screen
@@ -24,7 +24,8 @@ class AppIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: semanticLabel,
-      child: GlassSurface(
+      child: AppCard(
+        padding: EdgeInsets.zero,
         onTap: onTap,
         borderRadius: AppRadius.pill,
         semanticLabel: semanticLabel,

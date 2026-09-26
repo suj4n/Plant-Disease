@@ -66,7 +66,7 @@ class PlantBatch {
     return candidate;
   }
 
-  /// Stable notification id derived from batch uuid (fits 32-bit int).
+  /// Stable notification id derived from the batch id (fits 32-bit int).
   int get notificationId => id.hashCode.abs() % 2147483647;
 
   PlantBatch copyWith({

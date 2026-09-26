@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
+import '../theme/app_shadows.dart';
 import '../theme/app_spacing.dart';
-import 'glass_surface.dart';
 
-/// Standard content card: white, generously rounded, hairline border.
+/// The app's base surface: flat white fill, hairline border, soft shadow.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -18,6 +19,8 @@ class AppCard extends StatelessWidget {
   });
 
   final Widget child;
+
+  /// Defaults to [AppSpacing.md] on every side.
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final VoidCallback? onTap;
@@ -28,15 +31,44 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassSurface(
-      margin: margin,
+    final radius = BorderRadius.circular(borderRadius);
+    final decoration = BoxDecoration(
+      color: fillColor ?? AppColors.surface,
+      borderRadius: radius,
+      border: Border.all(color: borderColor ?? AppColors.border),
+      boxShadow: AppShadows.soft,
+    );
+    final inner = Padding(
       padding: padding ?? const EdgeInsets.all(AppSpacing.md),
-      onTap: onTap,
-      fillColor: fillColor,
-      borderColor: borderColor,
-      borderRadius: borderRadius,
-      semanticLabel: semanticLabel,
       child: child,
     );
+
+    Widget content = onTap == null
+        ? DecoratedBox(decoration: decoration, child: inner)
+        : Material(
+            type: MaterialType.transparency,
+            child: Ink(
+              decoration: decoration,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: radius,
+                splashColor: AppColors.softGreen.withValues(alpha: 0.5),
+                highlightColor: AppColors.softGreen.withValues(alpha: 0.3),
+                child: inner,
+              ),
+            ),
+          );
+
+    if (semanticLabel != null) {
+      content = Semantics(
+        label: semanticLabel,
+        button: onTap != null,
+        child: content,
+      );
+    }
+    if (margin != null) {
+      content = Padding(padding: margin!, child: content);
+    }
+    return content;
   }
 }
