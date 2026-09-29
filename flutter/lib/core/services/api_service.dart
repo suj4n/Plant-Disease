@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 
 import '../../data/models/detection_result.dart';
 import 'api_error.dart';
-import 'auth_service.dart';
 import 'image_validation.dart';
 import 'on_device_classifier.dart';
 
@@ -66,12 +65,6 @@ class ApiService {
     return u;
   }
 
-  static Map<String, String> get _authHeaders {
-    final token = AuthService.getAccessToken();
-    if (token == null) return const {};
-    return {'Authorization': 'Bearer $token'};
-  }
-
   /// Analyses a leaf photo: on the phone first, the server only as a fallback.
   /// Validates the file locally first so an obviously unusable image fails
   /// instantly.
@@ -92,7 +85,6 @@ class ApiService {
 
     final uri = Uri.parse('$baseUrl$_detectPath');
     final request = http.MultipartRequest('POST', uri)
-      ..headers.addAll(_authHeaders)
       ..files.add(await http.MultipartFile.fromPath('file', image.path));
 
     try {

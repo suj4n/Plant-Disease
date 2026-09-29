@@ -20,15 +20,22 @@ class WelcomeScreen extends StatefulWidget {
 }
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
-  final _emailController = TextEditingController();
+  final _nameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    // With fingerprint login set up, the name is usually already known.
+    _nameController.text = context.read<AuthProvider>().biometricName ?? '';
+  }
+
+  @override
   void dispose() {
-    _emailController.dispose();
+    _nameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -39,27 +46,31 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     final auth = context.read<AuthProvider>();
     final success = await auth.login(
-      _emailController.text.trim(),
+      _nameController.text,
       _passwordController.text,
     );
 
     if (!mounted) return;
     setState(() => _isLoading = false);
+    _finish(success, auth.errorMessage);
+  }
 
+  Future<void> _handleBiometricLogin() async {
+    final auth = context.read<AuthProvider>();
+    final success = await auth.loginWithBiometrics();
+    if (!mounted) return;
+    _finish(success, auth.errorMessage);
+  }
+
+  void _finish(bool success, String? error) {
     if (success) {
       _enterApp();
       return;
     }
+    if (error == null) return; // e.g. fingerprint prompt cancelled
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            auth.errorMessage ??
-                "We couldn't sign you in. Check your email and password.",
-          ),
-        ),
-      );
+      ..showSnackBar(SnackBar(content: Text(error)));
   }
 
   void _enterApp() {
@@ -93,13 +104,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     const SizedBox(height: AppSpacing.lg),
                     _LoginCard(
                       formKey: _formKey,
-                      emailController: _emailController,
+                      nameController: _nameController,
                       passwordController: _passwordController,
                       obscurePassword: _obscurePassword,
                       isLoading: _isLoading,
                       onTogglePassword: () =>
                           setState(() => _obscurePassword = !_obscurePassword),
                       onLogin: _handleLogin,
+                      onBiometricLogin:
+                          context.watch<AuthProvider>().biometricName == null
+                              ? null
+                              : _handleBiometricLogin,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     const _CapabilityRow(),
@@ -160,24 +175,42 @@ class _WelcomeHeader extends StatelessWidget {
 class _LoginCard extends StatelessWidget {
   const _LoginCard({
     required this.formKey,
-    required this.emailController,
+    required this.nameController,
     required this.passwordController,
     required this.obscurePassword,
     required this.isLoading,
     required this.onTogglePassword,
     required this.onLogin,
+    this.onBiometricLogin,
   });
 
   final GlobalKey<FormState> formKey;
-  final TextEditingController emailController;
+  final TextEditingController nameController;
   final TextEditingController passwordController;
   final bool obscurePassword;
   final bool isLoading;
   final VoidCallback onTogglePassword;
   final VoidCallback onLogin;
 
+  /// Set once fingerprint login is turned on in Profile.
+  final VoidCallback? onBiometricLogin;
+
   @override
   Widget build(BuildContext context) {
+    final loginButton = ElevatedButton(
+      onPressed: isLoading ? null : onLogin,
+      child: isLoading
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.mutedForeground,
+              ),
+            )
+          : const Text('Log in'),
+    );
+
     return AppCard(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Form(
@@ -188,19 +221,16 @@ class _LoginCard extends StatelessWidget {
             Text('Sign in', style: AppTextStyles.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             TextFormField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
+              controller: nameController,
               textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.email],
+              textCapitalization: TextCapitalization.words,
+              autofillHints: const [AutofillHints.username],
               decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline_rounded, size: 20),
+                labelText: 'Name',
+                prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
               ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Enter your email';
-                if (!v.contains('@')) return 'Enter a valid email address';
-                return null;
-              },
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
             ),
             const SizedBox(height: AppSpacing.xs),
             TextFormField(
@@ -230,19 +260,31 @@ class _LoginCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: AppSpacing.sm),
-            ElevatedButton(
-              onPressed: isLoading ? null : onLogin,
-              child: isLoading
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.mutedForeground,
+            if (onBiometricLogin == null)
+              loginButton
+            else
+              Row(
+                children: [
+                  Expanded(child: loginButton),
+                  const SizedBox(width: AppSpacing.sm),
+                  SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Tooltip(
+                      message: 'Log in with fingerprint',
+                      child: OutlinedButton(
+                        onPressed: isLoading ? null : onBiometricLogin,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(52, 52),
+                          foregroundColor: AppColors.primaryDark,
+                        ),
+                        child: const Icon(Icons.fingerprint_rounded, size: 28),
                       ),
-                    )
-                  : const Text('Log in'),
-            ),
+                    ),
+                  ),
+                ],
+              ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

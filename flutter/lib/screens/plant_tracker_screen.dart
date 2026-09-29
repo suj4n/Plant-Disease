@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../features/plant_tracker/guest_limit.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
@@ -34,6 +35,8 @@ class _PlantTrackerScreenState extends State<PlantTrackerScreen> {
   }
 
   Future<void> _openCreateBatch({String? plantType}) async {
+    if (!await canCreateBatch(context)) return;
+    if (!mounted) return;
     final result = await CreateBatchSheet.show(
       context,
       initialPlantType: plantType ?? widget.suggestedPlantType,

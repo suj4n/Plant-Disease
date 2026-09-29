@@ -12,7 +12,7 @@ import '../core/widgets/app_card.dart';
 import '../core/widgets/app_shell.dart';
 import '../core/widgets/section_header.dart';
 
-const String kAppVersion = '1.0.0';
+const String kAppVersion = '3.1.0';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,8 +30,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Sign out?'),
         content: const Text(
-          'Your saved scans stay on this device and sync again when you sign '
-          'back in.',
+          'Your scans and plants stay on this phone. You can log back in '
+          'any time.',
         ),
         actions: [
           TextButton(
@@ -51,6 +51,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await context.read<AuthProvider>().logout();
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/welcome', (_) => false);
+  }
+
+  Future<void> _toggleBiometric(bool enabled) async {
+    final message = await context.read<AuthProvider>().setBiometricEnabled(enabled);
+    if (!mounted || message == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _showInfo(String title, String body) {
@@ -80,8 +88,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Text('Profile', style: AppTextStyles.headlineMedium),
           const SizedBox(height: AppSpacing.md),
-          _ProfileHeader(auth: auth),
+          _ProfileHeader(name: auth.displayName),
           const SizedBox(height: AppSpacing.xl),
+
+          if (auth.isAuthenticated) ...[
+            const SectionHeader(title: 'Security'),
+            const SizedBox(height: AppSpacing.sm),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: _SwitchRow(
+                icon: Icons.fingerprint_rounded,
+                label: 'Fingerprint login',
+                description: 'Log in with your fingerprint instead of your password',
+                value: auth.biometricEnabled,
+                onChanged: _toggleBiometric,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+          ],
 
           const SectionHeader(title: 'Preferences'),
           const SizedBox(height: AppSpacing.sm),
@@ -126,7 +150,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     'About PlantDoc',
                     'PlantDoc detects plant diseases from a leaf photo using a '
                         'MobileNetV2 model trained on 20 plant and disease '
-                        'classes across apple, potato, strawberry and tomato.\n\n'
+                        'classes across apple, potato, strawberry and tomato. '
+                        'The model runs on your phone, so scans work offline.\n\n'
                         'Results are AI suggestions, not confirmed diagnoses. '
                         'Confirm with a local agricultural extension officer '
                         'before treating a valuable crop.',
@@ -138,12 +163,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: 'Privacy',
                   onTap: () => _showInfo(
                     'Privacy',
-                    'Your scans are stored on this device. When you are signed '
-                        'in they also sync to your PlantDoc account so you can '
-                        'reach them from another device.\n\n'
-                        'Leaf photos are sent to the PlantDoc analysis server '
-                        'only to run the detection. Photos from signed-out '
-                        'scans are not retained on the server.',
+                    'Your account, scans and plants are stored only on this '
+                        'phone. Passwords are kept as a one-way hash, never as '
+                        'text.\n\n'
+                        'Leaf photos are analysed on the phone. Only if that '
+                        'fails is a photo sent to the PlantDoc server, and it is '
+                        'not kept there.',
                   ),
                 ),
                 const _RowDivider(),
@@ -178,18 +203,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: AppSpacing.xl),
 
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Sign out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.error),
+          if (auth.isAuthenticated)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _confirmLogout,
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Sign out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: const BorderSide(color: AppColors.error),
+                ),
+              ),
+            )
+          else ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pushNamed(context, '/register'),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: const Text('Create an account'),
               ),
             ),
-          ),
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                    context, '/welcome', (_) => false),
+                child: const Text('Log in'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -197,19 +242,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.auth});
+  const _ProfileHeader({required this.name});
 
-  final AuthProvider auth;
+  /// Null for a guest.
+  final String? name;
 
   @override
   Widget build(BuildContext context) {
-    final profile = auth.userProfile;
-    final fullName = profile?['full_name'] as String?;
-    final email = auth.user?.email ?? '';
-    final displayName = (fullName == null || fullName.trim().isEmpty)
-        ? 'PlantDoc user'
-        : fullName;
-    final avatarUrl = profile?['avatar_url'] as String?;
+    final displayName = name ?? 'Guest';
 
     return AppCard(
       child: Row(
@@ -221,16 +261,12 @@ class _ProfileHeader extends StatelessWidget {
               color: AppColors.softGreen,
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.border),
-              image: (avatarUrl != null && avatarUrl.isNotEmpty)
-                  ? DecorationImage(
-                      image: NetworkImage(avatarUrl),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
             ),
             alignment: Alignment.center,
-            child: (avatarUrl == null || avatarUrl.isEmpty)
-                ? Text(
+            child: name == null
+                ? const Icon(Icons.person_outline_rounded,
+                    size: 30, color: AppColors.primaryDark)
+                : Text(
                     firstNameFrom(displayName, fallback: 'P')
                         .characters
                         .first
@@ -238,8 +274,7 @@ class _ProfileHeader extends StatelessWidget {
                     style: AppTextStyles.headlineMedium.copyWith(
                       color: AppColors.primaryDark,
                     ),
-                  )
-                : null,
+                  ),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -252,15 +287,15 @@ class _ProfileHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (email.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    email,
-                    style: AppTextStyles.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                const SizedBox(height: 2),
+                Text(
+                  name == null
+                      ? 'Guest mode \u00b7 1 plant batch'
+                      : 'Account on this phone',
+                  style: AppTextStyles.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),

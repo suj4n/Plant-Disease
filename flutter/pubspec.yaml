@@ -1,7 +1,7 @@
 name: plantdoc
 description: AI-powered plant disease detection app for Nepali farmers
 publish_to: 'none'
-version: 1.0.0+1
+version: 3.1.0+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -9,9 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Supabase
-  supabase_flutter: ^2.7.0
+
   
   # Animations
   flutter_animate: ^4.5.2
@@ -39,6 +37,8 @@ dependencies:
   timezone: ^0.10.0
   flutter_timezone: ^4.1.0
   tflite_flutter: ^0.12.1
+  local_auth: ^3.0.2
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

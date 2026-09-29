@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/providers/auth_provider.dart';
+import '../core/services/local_accounts.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_spacing.dart';
 import '../core/theme/app_text_styles.dart';
@@ -18,7 +19,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -29,7 +29,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -42,9 +41,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final success = await authProvider.register(
-      email: _emailController.text.trim(),
+      fullName: _nameController.text,
       password: _passwordController.text,
-      fullName: _nameController.text.trim(),
     );
 
     if (!mounted) return;
@@ -116,7 +114,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 Center(
                   child: Text(
-                    'Save your scans and reach them from any device.',
+                    'Your account and scans stay on this phone.',
                     style: AppTextStyles.bodyMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -133,39 +131,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _nameController,
                           textInputAction: TextInputAction.next,
+                          textCapitalization: TextCapitalization.words,
                           autofillHints: const [AutofillHints.name],
                           decoration: const InputDecoration(
-                            labelText: 'Full Name',
+                            labelText: 'Full name',
+                            helperText: 'You will log in with this name',
                             prefixIcon: Icon(Icons.person_outline),
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
+                            final name = value?.trim() ?? '';
+                            if (name.length < LocalAccounts.minNameLength) {
                               return 'Enter your full name';
                             }
-                            return null;
-                          },
-                        ),
-
-                        const SizedBox(height: AppSpacing.md),
-
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: Icon(Icons.email_outlined),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Enter your email';
+                            if (name.length > LocalAccounts.maxNameLength) {
+                              return 'Keep it under ${LocalAccounts.maxNameLength} characters';
                             }
-
-                            if (!value.contains('@')) {
-                              return 'Enter a valid email';
-                            }
-
                             return null;
                           },
                         ),
@@ -195,8 +175,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                           validator: (value) {
-                            if (value == null || value.length < 6) {
-                              return 'Minimum 6 characters';
+                            if (value == null ||
+                                value.length < LocalAccounts.minPasswordLength) {
+                              return 'Minimum ${LocalAccounts.minPasswordLength} characters';
                             }
                             return null;
                           },
@@ -265,10 +246,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: AppTextStyles.bodyMedium,
                     ),
                     TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      child: const Text('Login'),
+                      // Also reached from inside the app (guest limit), so
+                      // go to the login screen rather than just popping.
+                      onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                          context, '/welcome', (_) => false),
+                      child: const Text('Log in'),
                     ),
                   ],
                 ),

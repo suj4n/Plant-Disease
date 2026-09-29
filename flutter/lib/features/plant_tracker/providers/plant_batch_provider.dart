@@ -14,7 +14,6 @@ class PlantBatchProvider extends ChangeNotifier {
 
   final PlantBatchDatabase _database;
   final PlantReminderService _reminderService;
-  // Must be a real UUID: Supabase plant_batches.id is a UUID column.
   final _uuid = const Uuid();
 
   List<PlantBatch> _batches = [];

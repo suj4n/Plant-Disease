@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/navigation/app_page_route.dart';
 import 'core/navigation/main_shell.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/services/api_service.dart';
+import 'core/services/local_accounts.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/plant_tracker/providers/plant_batch_provider.dart';
@@ -26,17 +26,8 @@ void main() async {
     debugPrint('Could not load .env file: $e');
   }
 
-  final supabaseUrl =
-      dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL');
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ??
-      const String.fromEnvironment('SUPABASE_ANON_KEY');
-
-  await Supabase.initialize(
-    url: supabaseUrl.trim(),
-    anonKey: supabaseAnonKey.trim(),
-  );
-
   ApiService.configure(apiBaseUrlFromEnv: dotenv.env['API_BASE_URL']);
+  final accounts = await LocalAccounts.load();
 
   await PlantReminderService.instance.initialize();
   await PlantReminderService.instance.rescheduleAll();
@@ -60,7 +51,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider(accounts)),
         ChangeNotifierProvider(create: (_) => PlantBatchProvider()),
       ],
       child: const PlantDocApp(),

@@ -1,43 +1,71 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/auth_service.dart';
-import '../services/user_data_sync.dart';
+import 'package:flutter/foundation.dart';
+import 'package:local_auth/local_auth.dart';
 
+import '../services/local_accounts.dart';
+
+/// Sign-in state for the whole app. Accounts live on the phone
+/// ([LocalAccounts]); fingerprint checks go through the phone's own sensor.
 class AuthProvider extends ChangeNotifier {
-  User? _user;
-  Map<String, dynamic>? _userProfile;
+  AuthProvider(this._accounts, {LocalAuthentication? biometrics})
+      : _biometrics = biometrics ?? LocalAuthentication();
+
+  final LocalAccounts _accounts;
+  final LocalAuthentication _biometrics;
+
   bool _isLoading = false;
   String? _errorMessage;
 
-  AuthProvider() {
-    _user = AuthService.getCurrentUser();
-    if (_user != null) {
-      _loadProfile();
-    }
-    // Listen to auth changes
-    AuthService.onAuthStateChanged.listen((data) {
-      _user = data.session?.user;
-      if (_user != null) {
-        _loadProfile();
-      } else {
-        _userProfile = null;
-      }
-      notifyListeners();
-    });
-  }
-
-  User? get user => _user;
-  Map<String, dynamic>? get userProfile => _userProfile;
-  bool get isAuthenticated => _user != null;
+  /// Null for a guest.
+  String? get displayName => _accounts.signedInName;
+  bool get isAuthenticated => displayName != null;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  Future<void> _loadProfile() async {
+  /// Whose account the login screen's fingerprint button opens, if any.
+  String? get biometricName => _accounts.biometricName;
+  bool get biometricEnabled => _accounts.biometricIsForSignedInAccount;
+
+  Future<bool> login(String username, String password) =>
+      _run(() => _accounts.login(username, password));
+
+  Future<bool> register({required String fullName, required String password}) =>
+      _run(() => _accounts.register(fullName, password));
+
+  /// False if the fingerprint was not confirmed. A cancelled prompt leaves
+  /// [errorMessage] null so the UI stays quiet.
+  Future<bool> loginWithBiometrics() => _run(() async {
+        if (!await _confirmFingerprint('Log in to PlantDoc')) {
+          throw const _Cancelled();
+        }
+        await _accounts.signInWithBiometrics();
+      });
+
+  /// Returns copy to show the user, or null on success.
+  Future<String?> setBiometricEnabled(bool enabled) async {
     try {
-      final profile = await AuthService.getUserProfile();
-      _userProfile = profile;
+      if (enabled) {
+        final available = await _biometrics.getAvailableBiometrics();
+        if (available.isEmpty) {
+          return 'Add a fingerprint in your phone\'s Settings first.';
+        }
+        if (!await _confirmFingerprint('Confirm it\'s you to turn on fingerprint login')) {
+          return null; // cancelled: leave the switch off, say nothing
+        }
+      }
+      await _accounts.setBiometricForSignedInAccount(enabled);
       notifyListeners();
-    } catch (_) {}
+      return null;
+    } on AccountException catch (e) {
+      return e.message;
+    } catch (e) {
+      debugPrint('AuthProvider.setBiometricEnabled: $e');
+      return 'Fingerprint is not available on this phone right now.';
+    }
+  }
+
+  Future<void> logout() async {
+    await _accounts.logout();
+    notifyListeners();
   }
 
   void clearError() {
@@ -45,70 +73,32 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> _confirmFingerprint(String reason) =>
+      _biometrics.authenticate(localizedReason: reason, biometricOnly: true);
+
+  Future<bool> _run(Future<void> Function() action) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
-      await AuthService.login(email: email, password: password);
-      _user = AuthService.getCurrentUser();
-      await _loadProfile();
-      await UserDataSync.migrateGuestDataToCloud();
-      _isLoading = false;
-      notifyListeners();
+      await action();
       return true;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      notifyListeners();
+    } on _Cancelled {
       return false;
-    }
-  }
-
-  Future<bool> register({
-    required String email,
-    required String password,
-    required String fullName,
-  }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      await AuthService.register(
-        email: email,
-        password: password,
-        fullName: fullName,
-      );
-      _user = AuthService.getCurrentUser();
-      await _loadProfile();
-      await UserDataSync.migrateGuestDataToCloud();
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _isLoading = false;
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      notifyListeners();
+    } on AccountException catch (e) {
+      _errorMessage = e.message;
       return false;
-    }
-  }
-
-  Future<void> logout() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      await AuthService.logout();
-      _user = null;
-      _userProfile = null;
-      _isLoading = false;
-      notifyListeners();
     } catch (e) {
+      debugPrint('AuthProvider: $e');
+      _errorMessage = 'Something went wrong. Please try again.';
+      return false;
+    } finally {
       _isLoading = false;
-      _errorMessage = e.toString();
       notifyListeners();
     }
   }
+}
+
+class _Cancelled implements Exception {
+  const _Cancelled();
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../features/plant_tracker/guest_limit.dart';
 import '../core/navigation/app_navigator.dart';
 import '../core/providers/auth_provider.dart';
 import '../core/services/scan_storage.dart';
@@ -85,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _createBatch() async {
+    if (!await canCreateBatch(context)) return;
+    if (!mounted) return;
     final result = await CreateBatchSheet.show(context);
     if (result == null || !mounted) return;
 
@@ -132,9 +135,7 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = context.watch<AuthProvider>().userProfile;
-    final name = firstNameOrNull(profile?['full_name'] as String?);
-    final avatarUrl = profile?['avatar_url'] as String?;
+    final name = firstNameOrNull(context.watch<AuthProvider>().displayName);
 
     // A signed-out user has no name, and "Good evening, there" reads oddly.
     final greeting = name == null
@@ -148,7 +149,7 @@ class _HomeHeader extends StatelessWidget {
         children: [
           // Avatar and bell keep solid fills: interactive controls do not sit
           // directly on photography.
-          _Avatar(url: avatarUrl, initial: name ?? 'P'),
+          _Avatar(initial: name ?? 'P'),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -186,15 +187,12 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.url, required this.initial});
+  const _Avatar({required this.initial});
 
-  final String? url;
   final String initial;
 
   @override
   Widget build(BuildContext context) {
-    // The home screen must work with no profile image, so the initial is the
-    // default rather than a fallback nobody designed.
     return Container(
       width: 46,
       height: 46,
@@ -202,19 +200,12 @@ class _Avatar extends StatelessWidget {
         color: AppColors.cardElevated,
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.border),
-        image: (url != null && url!.isNotEmpty)
-            ? DecorationImage(image: NetworkImage(url!), fit: BoxFit.cover)
-            : null,
       ),
       alignment: Alignment.center,
-      child: (url == null || url!.isEmpty)
-          ? Text(
-              initial.characters.first.toUpperCase(),
-              style: AppTextStyles.titleLarge.copyWith(
-                color: AppColors.muted,
-              ),
-            )
-          : null,
+      child: Text(
+        initial.characters.first.toUpperCase(),
+        style: AppTextStyles.titleLarge.copyWith(color: AppColors.muted),
+      ),
     );
   }
 }
