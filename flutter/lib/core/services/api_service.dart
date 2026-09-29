@@ -8,13 +8,15 @@ import '../../data/models/detection_result.dart';
 import 'api_error.dart';
 import 'auth_service.dart';
 import 'image_validation.dart';
+import 'on_device_classifier.dart';
 
 /// The only place in the app that talks HTTP to the PlantDoc backend.
 ///
 /// Widgets never call this directly — they go through a repository or provider.
 /// Every failure leaves here as an [ApiError] carrying displayable copy.
 ///
-/// ML runs on the FastAPI server, not on the phone. Configure the URL via:
+/// Scans run on the phone ([OnDeviceClassifier]); the FastAPI server is the
+/// fallback. Configure its URL via:
 /// - `flutter/.env` -> `API_BASE_URL=https://your-api.example.com`, or
 /// - `flutter build apk --dart-define=API_BASE_URL=https://your-api.example.com`
 class ApiService {
@@ -70,15 +72,23 @@ class ApiService {
     return {'Authorization': 'Bearer $token'};
   }
 
-  /// Analyses a leaf photo. Validates the file locally first so an obviously
-  /// unusable image fails instantly instead of after a 60-second round trip.
+  /// Analyses a leaf photo: on the phone first, the server only as a fallback.
+  /// Validates the file locally first so an obviously unusable image fails
+  /// instantly.
   static Future<DetectionResult> detect(File image) async {
-    _ensureReachableUrl();
-
     final validation = await validateImageFile(image);
     if (!validation.isValid) {
       throw ApiError('INVALID_IMAGE', validation.message!, canRetry: true);
     }
+
+    try {
+      final result = await OnDeviceClassifier.classify(image);
+      return result.copyWith(imagePath: image.path, timestamp: DateTime.now());
+    } catch (e) {
+      debugPrint('ApiService: on-device inference failed, trying server ($e)');
+    }
+
+    _ensureReachableUrl();
 
     final uri = Uri.parse('$baseUrl$_detectPath');
     final request = http.MultipartRequest('POST', uri)
