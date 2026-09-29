@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/plant_batch.dart';
 import '../services/plant_batch_database.dart';
@@ -13,6 +14,8 @@ class PlantBatchProvider extends ChangeNotifier {
 
   final PlantBatchDatabase _database;
   final PlantReminderService _reminderService;
+  // Must be a real UUID: Supabase plant_batches.id is a UUID column.
+  final _uuid = const Uuid();
 
   List<PlantBatch> _batches = [];
   bool _loading = true;
@@ -53,8 +56,7 @@ class PlantBatchProvider extends ChangeNotifier {
   }) async {
     final now = DateTime.now();
     final batch = PlantBatch(
-      // ponytail: microsecond id; collides only if two batches are created in the same microsecond.
-      id: now.microsecondsSinceEpoch.toString(),
+      id: _uuid.v4(),
       name: name.trim(),
       plantType: plantType.trim(),
       plantedDate: plantedDate,
