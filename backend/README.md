@@ -1,7 +1,10 @@
 # PlantDoc API
 
-FastAPI service that runs the MobileNetV2 plant-disease classifier and backs the
-PlantDoc mobile app.
+FastAPI service that runs the MobileNetV2 plant-disease classifier.
+
+The PlantDoc app runs the same model **on the phone** and keeps accounts on the
+phone, so it does not need this service. The app only sends a photo here if
+on-device inference fails, and that request is anonymous.
 
 ---
 
@@ -50,8 +53,7 @@ an empty `.env` still runs locally.
 | `MODEL_PATH` | `../model/plant_best_model.keras` | |
 | `CLASS_NAMES_PATH` | `../Resources/class_names.json` | |
 | `MAX_UPLOAD_SIZE_MB` | `10` | Must match the Flutter client's limit. |
-| `MODEL_VERSION` | `mobilenetv2-20c-v1` | Reported in `/health` and detection metadata. |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | unset | Optional. **Never** ship the service-role key to a client. |
+| `MODEL_VERSION` | `mobilenetv2-20c-v3` | Reported in `/health` and detection metadata. |
 
 ## Database
 
@@ -73,13 +75,10 @@ Tables: `users`, `detections`, `plants`, `diseases`, `favorites`.
 The API issues its own HS256 JWTs via `/api/v1/auth/*` (`access` + `refresh`,
 distinguished by a `type` claim). Send `Authorization: Bearer <access_token>`.
 
-> **Known gap.** The Flutter app authenticates against Supabase and sends its
-> *Supabase* token. That token cannot validate against this service's own
-> `SECRET_KEY`, so the mobile client is always treated as anonymous here.
-> Detection still works — `/detect` and `/predict` accept anonymous requests —
-> but per-user history in this database is only reachable by a client that logs
-> in through `/api/v1/auth/login`. See `docs/BACKEND_REWORK_PLAN.md`
-> ("Authentication") for why this was documented rather than bridged.
+> The PlantDoc app does not use these routes. Its accounts live on the phone and
+> it calls `/api/v1/detect` without a token, so its requests are anonymous and
+> nothing is stored for them. The auth, history and favorites routes are only
+> for other API clients.
 
 ## Endpoints
 
@@ -123,7 +122,7 @@ distinguished by a `type` claim). Send `Authorization: Bearer <access_token>`.
      "class_label": "Tomato___Late_blight"}
   ],
   "information": {"description": "...", "symptoms": [], "treatment": [], "prevention": []},
-  "metadata": {"model_version": "mobilenetv2-20c-v1", "processing_time_ms": 123}
+  "metadata": {"model_version": "mobilenetv2-20c-v3", "processing_time_ms": 123}
 }
 ```
 
@@ -141,7 +140,7 @@ static property of the disease and is deliberately independent of it.
 
 ```json
 {"status": "healthy", "model_loaded": true,
- "model_version": "mobilenetv2-20c-v1", "classes": 20, "database": "connected"}
+ "model_version": "mobilenetv2-20c-v3", "classes": 20, "database": "connected"}
 ```
 
 Always returns 200 so the probe is not mistaken for an outage; `status` becomes
@@ -191,7 +190,7 @@ is ever returned to a client.
 |---|---|
 | Architecture | MobileNetV2, transfer-learned |
 | Input | 224 × 224 × 3 RGB |
-| Preprocessing | `cv2.resize(..., INTER_AREA)` → float32 → `mobilenet_v2.preprocess_input` |
+| Preprocessing | `cv2.resize(..., INTER_LINEAR)` → float32 RGB 0–255. Scaling to [-1, 1] is a layer **inside** the model, so do not apply `preprocess_input` as well |
 | Output | softmax over 20 classes |
 | Labels | `Resources/class_names.json` — **order is significant** |
 

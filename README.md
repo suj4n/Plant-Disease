@@ -12,19 +12,21 @@ for every diagnosis.
 
 | APK | For |
 |---|---|
-| **[PlantDoc-arm64.apk](https://github.com/suj4n/Plant-Disease/releases/latest/download/PlantDoc-arm64.apk)** (~39 MB) | Almost every Android phone from the last ~7 years |
-| [PlantDoc-universal.apk](https://github.com/suj4n/Plant-Disease/releases/latest/download/PlantDoc-universal.apk) (~86 MB) | Any device — use this if the one above won't install |
+| **[PlantDoc-arm64.apk](https://github.com/suj4n/Plant-Disease/releases/latest/download/PlantDoc-arm64.apk)** (~39 MB) | Almost every Android phone (Android 7.0 or newer) |
+| [PlantDoc-universal.apk](https://github.com/suj4n/Plant-Disease/releases/latest/download/PlantDoc-universal.apk) (~85 MB) | Any device — use this if the one above won't install |
 
 Android will ask you to allow installing from this source the first time.
 All versions: [Releases](https://github.com/suj4n/Plant-Disease/releases).
 
 ## Features
 
-- **Offline diagnosis** — the model runs on the phone; photos never leave it
-- **20 classes across 4 crops** — Apple, Potato, Strawberry, Tomato (diseases + healthy), plus a "no leaf" class that rejects non-leaf photos
+- **Offline diagnosis** — the model runs on the phone, so scans work without internet
+- **4 crops, 20 classes** — 19 disease and healthy classes for Apple, Potato, Strawberry and Tomato, plus a "no leaf" class that rejects photos without a leaf
 - **Guidance** — symptoms, treatment and prevention for each disease, with a risk level
-- **Scan history** — saved locally, synced to the cloud when signed in
-- **Plant tracker** — log plantings and get a reminder to re-scan every 14 days
+- **Accounts on the phone** — sign up with your full name and a password; no email or internet needed, and passwords are stored only as a one-way hash
+- **Fingerprint login** — turn it on in Profile → Security (needs a fingerprint registered in the phone's settings)
+- **Guest mode** — use the app without an account; guests can track one plant batch
+- **Scan history and plant tracker** — saved on the phone, with a reminder to re-scan each plant every 14 days
 
 ## Model
 
@@ -40,28 +42,31 @@ TensorFlow Lite (float32, 12 MB).
 
 ![Training history](Resources/__results___images/fig03_training_history.png)
 
-Train and validation accuracy stay within 0.7 points and validation loss falls to
-the last epoch, so the model is not overfitting. Full evaluation figures are in
+Train and validation accuracy finish within 0.7 points of each other, and
+validation loss levels off at its lowest in the final epochs rather than rising,
+so the model is not overfitting. All evaluation figures are in
 [`Resources/__results___images/`](Resources/__results___images/).
 
-**Limitation:** PlantVillage images are single leaves on plain backgrounds. Expect
-lower accuracy on photos taken in the field with soil, other foliage or strong shadows.
+**Limitations:** PlantVillage images are single leaves on plain backgrounds, so
+expect lower accuracy on photos taken in the field with soil, other foliage or
+strong shadows. Grad-CAM samples suggest the model also draws on the photo
+background, not only the leaf.
 
 ## How it works
 
 ```
-Photo ─► resize 224×224 ─► TFLite model (on phone) ─► disease + guidance
-                                   │
-                                   └─ if on-device inference fails ─► FastAPI server
+Photo ─► resize to 224×224 ─► TFLite model (on the phone) ─► disease + guidance
+                                      │
+                                      └─ only if on-device inference fails ─► FastAPI server
 ```
 
-- **App** (`flutter/`) — Flutter, Supabase auth, TFLite inference, SQLite + local notifications
-- **Server** (`backend/`) — FastAPI + TensorFlow, the same model; used as a fallback
-- **Model** (`model/`) — trained Keras model; preprocessing is built into the model
+- **App** (`flutter/`) — Flutter; on-device inference, accounts, fingerprint login, scan history and plant tracker (SQLite + local notifications). Nothing is stored off the phone.
+- **Server** (`backend/`) — FastAPI + TensorFlow running the same model. It is only a fallback: a photo is sent there only if on-device inference fails, and it is not kept.
+- **Model** (`model/`) — the trained Keras model; image preprocessing is built into the model.
 
 ## Run it yourself
 
-**Backend**
+**Backend** (optional — only the fallback)
 
 ```bash
 cd backend
@@ -71,7 +76,7 @@ cp .env.example .env
 .venv/Scripts/python -m uvicorn app.main:app --port 8000
 ```
 
-**App** — set `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `API_BASE_URL` in `flutter/.env`, then:
+**App** — set `API_BASE_URL` in `flutter/.env` to the fallback server's address, then:
 
 ```bash
 cd flutter
@@ -88,14 +93,12 @@ flutter build apk --release                   # universal APK
 ```
 
 **After retraining** — copy the new `plant_best_model.keras` to `model/`, then
-regenerate the phone model and knowledge base (this also checks the phone model
-against the Keras one):
+regenerate the phone model and disease knowledge base. This also checks the phone
+model against the Keras one:
 
 ```bash
 backend/.venv/Scripts/python scripts/export_tflite.py
 ```
-
-Detailed setup, USB/Wi-Fi debugging and troubleshooting: [running_Instruction.md](running_Instruction.md).
 
 ## Tests
 
@@ -108,7 +111,7 @@ cd flutter && flutter test
 
 ```
 flutter/     Android app (Flutter)
-backend/     FastAPI server
+backend/     FastAPI fallback server
 model/       Trained Keras model
 Resources/   Class labels, training logs, evaluation figures
 scripts/     Setup, dev and model-export scripts
